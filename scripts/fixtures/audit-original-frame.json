@@ -1,0 +1,181 @@
+{
+  "format": "frame-studio-v1",
+  "name": "Asymmetric four-arm frame benchmark",
+  "model": {
+    "nodes": [
+      {
+        "id": "N1",
+        "x": 3,
+        "y": 4.25,
+        "joint": "rigid",
+        "support": "pinned"
+      },
+      {
+        "id": "N2",
+        "x": 7.830659887485114,
+        "y": 0.8943689157284328,
+        "joint": "rigid",
+        "support": "pinned"
+      },
+      {
+        "id": "N3",
+        "x": 2.9626598874851133,
+        "y": -0.3579999999999924,
+        "joint": "rigid",
+        "support": "pinned"
+      },
+      {
+        "id": "N4",
+        "x": 7.86799999999999,
+        "y": 3.6798689157284423,
+        "joint": "rigid",
+        "support": "pinned"
+      },
+      {
+        "id": "6b06d7d0",
+        "x": 6.015701326444269,
+        "y": 2.1551348371446277,
+        "joint": "rigid",
+        "support": "free"
+      }
+    ],
+    "beams": [
+      {
+        "id": "774e1897",
+        "a": "N3",
+        "b": "6b06d7d0",
+        "family": "73a15c35",
+        "kind": "beam",
+        "profile": "Custom",
+        "E": 210000000,
+        "A": 0.0008548,
+        "I": 4.3551e-7
+      },
+      {
+        "id": "804bdb17",
+        "a": "6b06d7d0",
+        "b": "N4",
+        "family": "f59f26b5",
+        "kind": "beam",
+        "profile": "Custom",
+        "E": 210000000,
+        "A": 0.0008548,
+        "I": 4.3551e-7
+      },
+      {
+        "id": "01fbe72a",
+        "a": "N1",
+        "b": "6b06d7d0",
+        "family": "e23ab8a4",
+        "kind": "beam",
+        "profile": "Custom",
+        "E": 210000000,
+        "A": 0.0008548,
+        "I": 4.3551e-7
+      },
+      {
+        "id": "7661a517",
+        "a": "6b06d7d0",
+        "b": "N2",
+        "family": "6b99c3db",
+        "kind": "beam",
+        "profile": "Custom",
+        "E": 210000000,
+        "A": 0.0008548,
+        "I": 4.3551e-7,
+        "releaseA": false,
+        "releaseB": false
+      }
+    ],
+    "loads": [
+      {
+        "id": "f4dfe9f8",
+        "beam": "774e1897",
+        "t": 1,
+        "type": "force",
+        "fx": 0,
+        "fy": -12,
+        "m": 0,
+        "case": "Q"
+      },
+      {
+        "id": "bffacaeb",
+        "beam": "774e1897",
+        "t": 1,
+        "type": "force",
+        "fx": 3,
+        "fy": 0,
+        "m": 0,
+        "case": "Q"
+      },
+      {
+        "id": "a89e1d04",
+        "beam": "774e1897",
+        "t": 1,
+        "type": "moment",
+        "fx": 0,
+        "fy": 0,
+        "m": 1,
+        "case": "Q"
+      }
+    ],
+    "dimensionUnits": "m",
+    "dimensions": [
+      {
+        "id": "e7380783",
+        "kind": "horizontal",
+        "a": "N3",
+        "b": "N2",
+        "value": 4.868,
+        "driving": true,
+        "sense": 1,
+        "offset": 42
+      },
+      {
+        "id": "3fe99098",
+        "kind": "vertical",
+        "a": "N3",
+        "b": "N1",
+        "value": 4.608,
+        "driving": true,
+        "sense": 1,
+        "offset": -42
+      },
+      {
+        "id": "6784d724",
+        "kind": "horizontal",
+        "a": "N4",
+        "b": "N1",
+        "value": 4.868,
+        "driving": true,
+        "sense": -1,
+        "offset": -42
+      },
+      {
+        "id": "0c06706e",
+        "kind": "vertical",
+        "a": "N2",
+        "b": "N4",
+        "value": 2.7855,
+        "driving": true,
+        "sense": 1,
+        "offset": 42
+      }
+    ],
+    "dimensionAnchor": "N1",
+    "constraints": [
+      {
+        "id": "22394521",
+        "type": "collinear",
+        "reference": "01fbe72a",
+        "target": "7661a517"
+      },
+      {
+        "id": "beed80ea",
+        "type": "collinear",
+        "reference": "774e1897",
+        "target": "804bdb17"
+      }
+    ]
+  }
+}
