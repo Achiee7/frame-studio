@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {sections,sectionProperties,geometryError,sectionForBeam,applySection} from '../app/sections.ts';
+import {beamDefaults,example,enforceConstraints,validModel} from '../app/model.ts';
+import {solve} from '../app/solver.ts';
+import {boxSelection,mergeSelection,removeSelected} from '../app/selection.ts';
+const near=(a,b,t=1e-9)=>assert.ok(Math.abs(a-b)<=t*Math.max(Math.abs(b),1e-8),`${a} != ${b}`);
+const rect={shape:'rectangle',h:100,b:50,tw:0,tf:0,t:0,r:0};
+let p=sectionProperties(rect);near(p.A,.005);near(p.I,50*100**3/12/1e12);near(p.Iminor,100*50**3/12/1e12);
+p=sectionProperties({...rect,shape:'chs',h:100,b:100,t:5});near(p.A,Math.PI*(100**2-90**2)/4e6);near(p.I,Math.PI*(100**4-90**4)/64e12);
+p=sectionProperties({...rect,shape:'rhs',t:5});near(p.A,(50*100-40*90)/1e6);near(p.I,(50*100**3-40*90**3)/12e12);
+const hea=sections.find(s=>s.id==='HEA-120'),calc=sectionProperties(hea.geometry);near(calc.A,hea.A,.003);near(calc.I,hea.I,.003);near(calc.Iminor,hea.Iminor,.003);
+const larger=sectionProperties({...hea.geometry,h:160});assert.ok(larger.I>hea.I);assert.ok(larger.A>hea.A);
+assert.ok(geometryError({...hea.geometry,tf:100}));assert.ok(geometryError({...rect,shape:'rhs',t:30}));assert.throws(()=>sectionProperties({...rect,h:-5}));
+const m=example(),applied=applySection(m,['B1'],hea,true);assert.equal(applied.beams[1].section.id,hea.id);assert.equal(m.beams[0].section,undefined);assert.equal(applied.beams[2].section,undefined);assert.ok(validModel(applied));assert.equal(sectionForBeam({...m.beams[0],profile:'HEA 120',I:1e-10}).geometry,undefined,'Do not invent dimensions for a mismatched legacy section');
+assert.equal(sectionForBeam(beamDefaults).geometry.h,114);const invalid=structuredClone(applied);invalid.beams[0].section.geometry.h=-1;assert.equal(validModel(invalid),false);
+const bundle=await build({entryPoints:['app/local-storage.ts'],bundle:true,platform:'node',format:'esm',write:false});const {createLocalStore}=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
+function store(){const v=new Map();return createLocalStore({getItem:k=>v.get(k)??null,setItem:(k,x)=>v.set(k,x)});}
+const db=store(),custom={...hea,id:'custom-tube',category:'Custom',name:'My section',massProperties:{ixx:94.6}},preset=db.savePreset({...custom,section:custom});db.setFavorite(hea.id,true);db.setFavorite(custom.id,true);db.setFavorite(hea.id,true);assert.equal(db.listFavorites().length,2);db.updatePreset(preset.id,{...custom,section:{...custom,name:'Renamed'},name:'Renamed'});assert.equal(db.listPresets().length,1);assert.equal(db.listPresets()[0].section.name,'Renamed');const other=store();other.importBackup(db.exportBackup());assert.deepEqual(other.listFavorites(),db.listFavorites());assert.equal(other.listPresets()[0].massProperties.ixx,94.6);other.setFavorite(hea.id,false);assert.equal(other.listFavorites().length,1);const conflict=structuredClone(db.exportBackup());conflict.beamPresets[0].name='Imported variant';conflict.beamPresets[0].section.name='Imported variant';other.importBackup(conflict);assert.equal(new Set(other.listPresets().map(p=>p.section.id)).size,2);assert.equal(other.listFavorites().length,3);
+const simple={nodes:[{id:'a',x:0,y:0,joint:'rigid',support:'fixed'},{id:'b',x:4,y:0,joint:'rigid',support:'free'}],beams:[{id:'b1',a:'a',b:'b',family:'b1',...beamDefaults}],loads:[{id:'l',beam:'b1',normal:-1,t:1,attachment:'end',type:'force',fx:0,fy:-10,m:0,case:'Q'}]};
+const original=solve(simple);simple.nodes[1].x=0;simple.nodes[1].y=4;enforceConstraints(simple);near(simple.loads[0].fx,10);near(simple.loads[0].fy,0);const rotated=solve(simple);near(rotated.maxDisplacement,original.maxDisplacement,1e-7);near(rotated.maxMoment,original.maxMoment,1e-7);assert.ok(validModel(simple));
+const screen=p=>p;const window=boxSelection(simple,{x:-1,y:-1},{x:1,y:5},screen);assert.equal(window.length,4);const crossing=boxSelection(simple,{x:1,y:3},{x:-1,y:1},screen);assert.deepEqual(crossing,[{type:'beam',id:'b1'}]);assert.deepEqual(boxSelection(simple,{x:-1,y:1},{x:1,y:3},screen),[]);assert.equal(mergeSelection(window,window).length,4);const removed=removeSelected(simple,[{type:'beam',id:'b1'}]);assert.equal(removed.loads.length,0);assert.equal(removed.beams.length,0);assert.equal(simple.beams.length,1);
+console.log('Passed: exact section integrals, fillets vs published HEA data, invalid geometry, section assignment and legacy safety, favourite/preset backup round-trips, normal-load rotation covariance, CAD window/crossing selection and dependent removal.');
