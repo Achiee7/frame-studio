@@ -1,0 +1,9 @@
+import {useState} from 'react';
+import {Link2} from 'lucide-react';
+import {joinContinuous,beamGroupName} from './model';
+import type {Model} from './model';
+export default function ContinuityPanel({model:m,selected,onChange}:{model:Model;selected?:string;onChange:(m:Model)=>boolean}){
+ const [first,setFirst]=useState(selected??m.beams[0]?.id??''),[second,setSecond]=useState(m.beams.find(b=>b.id!==(selected??m.beams[0]?.id))?.id??''),[message,setMessage]=useState('');
+ const a=m.beams.find(b=>b.id===first),b=m.beams.find(b=>b.id===second),same=a&&b&&a.family===b.family;
+ return <div className="continuity-panel"><p>Beam groups identify the segments that share rotation through a crossing pin. Collinear sketch geometry alone does not make separate segments one continuous beam.</p><div className="field-grid" style={{marginTop:20}}>{[[first,setFirst,'First segment'],[second,setSecond,'Second segment']].map(([value,set,label])=><label key={String(label)}>{String(label)}<select value={String(value)} onChange={e=>(set as (s:string)=>void)(e.target.value)}>{m.beams.map((b,i)=><option key={b.id} value={b.id}>B{i+1} · {beamGroupName(m,b.family)}</option>)}</select></label>)}</div><p className="muted">{same?'These segments already belong to the same continuous beam group.':'Choose two segments sharing a node. Internal hinges and end releases must be removed before joining continuity.'}</p><button className="primary" style={{marginTop:18}} disabled={!a||!b||first===second||same} onClick={()=>{try{const next=structuredClone(m);joinContinuous(next,first,second);if(onChange(next))setMessage('Segments joined as one continuous beam group.');}catch(e){setMessage((e as Error).message);}}}><Link2 size={16}/>Join as one continuous beam</button>{message&&<p role="status" style={{marginTop:16}}>{message}</p>}</div>;
+}
