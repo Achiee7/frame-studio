@@ -19,6 +19,11 @@ Projects, recovery drafts and named beam presets stay in your browser. There is 
 - Press Enter to finish drawing; Escape cancels the preview. Member lengths appear on the canvas.
 - Apply point or distributed forces normal to a beam, following its angle. Deflection diagrams show actual displacement values in the selected units. Hover the section name for read-only properties.
 
+- Double-click a dimension on a profile drawing to resize it live, in the section library or selected member preview. Enter applies the size; Escape restores it. Standard profiles become custom snapshots. Area and inertia recalculate; resizing a continuous beam preserves each segment’s material.
+- Stress colours vary along the members: green reflects normal stress relative to that member’s yield strength, orange shows yielded history, and red shows an entered limit. The Stress view labels the section peak. Deflection uses an independent blue–purple magnitude scale.
+- Results update during dragging. A persistent background material solver keeps the latest edit; a clearly labelled elastic preview updates immediately while it catches up. Older material results are never drawn on a newer model.
+- Settings includes 0–10 decimal places and decimal/scientific notation. The sketch, result labels and report summaries use the saved display preferences; unrounded calculations and input precision are retained.
+
 See [section data, calculation conventions and controls](docs/sections.md) for details.
 
 ## Save projects
