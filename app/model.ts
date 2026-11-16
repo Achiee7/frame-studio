@@ -1,17 +1,21 @@
+import {validMaterial} from './materials.ts';
+import type {MaterialSpec} from './materials.ts';
+import {validUnits} from './units.ts';
+import type {UnitSettings} from './units.ts';
 import {validSection} from './sections.ts';
 import type {SectionSpec} from './sections.ts';
 export type Joint = 'rigid'|'pin'|'hinge';
 export type Support = 'free'|'pinned'|'roller'|'rollerX'|'fixed'|'guided'|'spring';
 export type Node = {id:string;x:number;y:number;joint:Joint;support:Support;spring?:number;settlement?:number};
 export type MassProperties = {material?:string;reference?:string;mass?:number;density?:number;specimenLength?:number;ixx?:number;iyy?:number;izz?:number;ixy?:number;ixz?:number;iyz?:number};
-export type Beam = {section?:SectionSpec;massProperties?:MassProperties;id:string;a:string;b:string;family:string;kind:'beam'|'strut';profile:string;E:number;A:number;I:number;releaseA?:boolean;releaseB?:boolean};
+export type Beam = {material?:MaterialSpec;section?:SectionSpec;massProperties?:MassProperties;id:string;a:string;b:string;family:string;kind:'beam'|'strut';profile:string;E:number;A:number;I:number;releaseA?:boolean;releaseB?:boolean};
 export type Load = {normal?:1|-1;canReverse?:boolean;attachment?:'start'|'end';position?:{from:'start'|'end';distance:number;fixed?:boolean};id:string;beam:string;t:number;type:'force'|'moment'|'distributed';fx:number;fy:number;m:number;case:string};
 export type GeometryConstraint = {suppressed?:boolean;id:string;type:'collinear'|'rightAngle';reference:string;target:string};
 export type CadDimension = {id:string;kind:'length'|'aligned'|'horizontal'|'vertical'|'direction'|'angle';a:string;b:string;c?:string;d?:string;value:number;driving:boolean;sense?:1|-1;offset?:number};
 export type SketchConstraint={suppressed?:boolean;scope?:'points'|'members';id:string;type:'horizontal'|'vertical'|'equal'|'parallel'|'perpendicular'|'collinear'|'coincident';a:string;b?:string};
 export const ORIGIN='@origin';
 export function cadPoint(m:Model,id:string){return id===ORIGIN?{id:ORIGIN,x:0,y:0}:m.nodes.find(n=>n.id===id)!;}
-export type Model = {sketchConstraints?:SketchConstraint[];nodes:Node[];beams:Beam[];loads:Load[];constraints?:GeometryConstraint[];dimensions?:CadDimension[];dimensionAnchor?:string;dimensionUnits?:'m'|'mm'};
+export type Model = {units?:Partial<UnitSettings>;sketchConstraints?:SketchConstraint[];nodes:Node[];beams:Beam[];loads:Load[];constraints?:GeometryConstraint[];dimensions?:CadDimension[];dimensionAnchor?:string;dimensionUnits?:'m'|'mm'};
 export const uid=()=>crypto.randomUUID().slice(0,8);
 export const profiles=[{name:'HEA 120',A:25.3,I:606},{name:'HEA 160',A:38.8,I:1670},{name:'HEA 200',A:53.8,I:3692},{name:'IPE 200',A:28.5,I:1943},{name:'IPE 300',A:53.8,I:8356}]; // cm², cm⁴
 export const beamDefaults={kind:'beam' as const,profile:'HEA 120',E:210000000,A:0.00253,I:0.00000606}; // kN, m
@@ -23,12 +27,12 @@ export function example(name='cross'):Model {
 }
 export function validModel(v:any):v is Model {
  const finite=(x:any)=>typeof x==='number'&&Number.isFinite(x)&&Math.abs(x)<1e12;
- if(!v||!Array.isArray(v.nodes)||!Array.isArray(v.beams)||!Array.isArray(v.loads)||v.nodes.length>150||v.beams.length>150||v.loads.length>300)return false;
+ if(!v||!validUnits(v.units)||!Array.isArray(v.nodes)||!Array.isArray(v.beams)||!Array.isArray(v.loads)||v.nodes.length>150||v.beams.length>150||v.loads.length>300)return false;
  const ids=new Set(v.nodes.map((n:any)=>n.id));if(ids.size!==v.nodes.length)return false;
  const bids=new Set(v.beams.map((b:any)=>b.id));if(bids.size!==v.beams.length)return false;
  if(v.constraints!==undefined){if(!Array.isArray(v.constraints)||v.constraints.length>150)return false;try{constraintOrder(v);}catch{return false;}}
  if(!validSketchConstraints(v)||!validDimensions(v))return false;
- return v.nodes.every((n:any)=>typeof n.id==='string'&&n.id!==ORIGIN&&finite(n.x)&&finite(n.y)&&['rigid','pin','hinge'].includes(n.joint)&&['free','pinned','roller','rollerX','fixed','guided','spring'].includes(n.support)&&(!n.spring||finite(n.spring))&&(!n.settlement||finite(n.settlement)))&&v.beams.every((b:any)=>validSection(b.section)&&validMassProperties(b.section?.massProperties)&&validMassProperties(b.massProperties)&&typeof b.id==='string'&&typeof b.family==='string'&&typeof b.profile==='string'&&ids.has(b.a)&&ids.has(b.b)&&b.a!==b.b&&['beam','strut'].includes(b.kind)&&[b.E,b.A,b.I].every(x=>finite(x)&&x>0)&&Math.hypot(v.nodes.find((n:any)=>n.id===b.a).x-v.nodes.find((n:any)=>n.id===b.b).x,v.nodes.find((n:any)=>n.id===b.a).y-v.nodes.find((n:any)=>n.id===b.b).y)>1e-6)&&v.loads.every((l:any)=>typeof l.id==='string'&&(l.normal===undefined||l.normal===1||l.normal===-1)&&(l.canReverse===undefined||typeof l.canReverse==='boolean')&&bids.has(l.beam)&&finite(l.t)&&l.t>=0&&l.t<=1&&['force','moment','distributed'].includes(l.type)&&[l.fx,l.fy,l.m].every(finite)&&['G','Q','W'].includes(l.case)&&validLoadPosition(v,l))&&geometrySatisfied(v)&&sketchSatisfied(v);
+ return v.nodes.every((n:any)=>typeof n.id==='string'&&n.id!==ORIGIN&&finite(n.x)&&finite(n.y)&&['rigid','pin','hinge'].includes(n.joint)&&['free','pinned','roller','rollerX','fixed','guided','spring'].includes(n.support)&&(!n.spring||finite(n.spring))&&(!n.settlement||finite(n.settlement)))&&v.beams.every((b:any)=>validMaterial(b.material)&&validSection(b.section)&&validMassProperties(b.section?.massProperties)&&validMassProperties(b.massProperties)&&typeof b.id==='string'&&typeof b.family==='string'&&typeof b.profile==='string'&&ids.has(b.a)&&ids.has(b.b)&&b.a!==b.b&&['beam','strut'].includes(b.kind)&&[b.E,b.A,b.I].every(x=>finite(x)&&x>0)&&Math.hypot(v.nodes.find((n:any)=>n.id===b.a).x-v.nodes.find((n:any)=>n.id===b.b).x,v.nodes.find((n:any)=>n.id===b.a).y-v.nodes.find((n:any)=>n.id===b.b).y)>1e-6)&&v.loads.every((l:any)=>typeof l.id==='string'&&(l.normal===undefined||l.normal===1||l.normal===-1)&&(l.canReverse===undefined||typeof l.canReverse==='boolean')&&bids.has(l.beam)&&finite(l.t)&&l.t>=0&&l.t<=1&&['force','moment','distributed'].includes(l.type)&&[l.fx,l.fy,l.m].every(finite)&&['G','Q','W'].includes(l.case)&&validLoadPosition(v,l))&&geometrySatisfied(v)&&sketchSatisfied(v);
 }
 export function project(p:{x:number;y:number},a:{x:number;y:number},b:{x:number;y:number}){const dx=b.x-a.x,dy=b.y-a.y;const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy)));return {x:a.x+t*dx,y:a.y+t*dy,t,d:Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy)};}
 export function crossings(m:Model){const out:{a:string;b:string;x:number;y:number;ta:number;tb:number}[]=[];for(let i=0;i<m.beams.length;i++)for(let j=i+1;j<m.beams.length;j++){const a=m.beams[i],b=m.beams[j];if([a.a,a.b].some(x=>[b.a,b.b].includes(x)))continue;const p=m.nodes.find(n=>n.id===a.a)!,q=m.nodes.find(n=>n.id===a.b)!,r=m.nodes.find(n=>n.id===b.a)!,s=m.nodes.find(n=>n.id===b.b)!;const dx=q.x-p.x,dy=q.y-p.y,ex=s.x-r.x,ey=s.y-r.y,den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)continue;const ta=((r.x-p.x)*ey-(r.y-p.y)*ex)/den,tb=((r.x-p.x)*dy-(r.y-p.y)*dx)/den;if(ta>=-1e-7&&ta<=1+1e-7&&tb>=-1e-7&&tb<=1+1e-7)out.push({a:a.id,b:b.id,x:p.x+ta*dx,y:p.y+ta*dy,ta,tb});}return out;}

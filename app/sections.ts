@@ -1,7 +1,9 @@
+import {validMaterial} from './materials.ts';
+import type {MaterialSpec} from './materials.ts';
 import type {Beam,Model,MassProperties} from './model';
 
 export type SectionGeometry={shape:'i'|'rhs'|'chs'|'rectangle';h:number;b:number;tw:number;tf:number;t:number;r:number;ri?:number};
-export type SectionSpec={id:string;name:string;category:string;E:number;A:number;I:number;Iminor?:number;geometry?:SectionGeometry;source?:string;method?:string;massProperties?:MassProperties};
+export type SectionSpec={material?:MaterialSpec;id:string;name:string;category:string;E:number;A:number;I:number;Iminor?:number;geometry?:SectionGeometry;source?:string;method?:string;massProperties?:MassProperties};
 export const HE_SOURCE='https://orangebook.arcelormittal.com/node/234';
 export const IPE_SOURCE='https://orangebook.arcelormittal.com/index.php/node/6';
 export const HOLLOW_SOURCE='https://www.steelforlifebluebook.co.uk/explanatory-notes/bs5950/properties/';
@@ -26,7 +28,7 @@ export function sectionProperties(g:SectionGeometry){
  else {A=b*h;I=b*h**3/12;Iminor=h*b**3/12;}
  return {A:A/1e6,I:I/1e12,Iminor:Iminor/1e12};
 }
-export function validSection(s:any){return s===undefined||!!s&&typeof s.id==='string'&&typeof s.name==='string'&&s.name.length<=100&&typeof s.category==='string'&&[s.E,s.A,s.I].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e12)&&(s.Iminor===undefined||typeof s.Iminor==='number'&&Number.isFinite(s.Iminor)&&s.Iminor>0)&&(s.geometry===undefined||!geometryError(s.geometry))&&['source','method'].every(k=>s[k]===undefined||typeof s[k]==='string'&&s[k].length<500);}
+export function validSection(s:any){return s===undefined||!!s&&validMaterial(s.material)&&typeof s.id==='string'&&typeof s.name==='string'&&s.name.length<=100&&typeof s.category==='string'&&[s.E,s.A,s.I].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e12)&&(s.Iminor===undefined||typeof s.Iminor==='number'&&Number.isFinite(s.Iminor)&&s.Iminor>0)&&(s.geometry===undefined||!geometryError(s.geometry))&&['source','method'].every(k=>s[k]===undefined||typeof s[k]==='string'&&s[k].length<500);}
 const steel=210e6;
 function rolled(category:string,rows:number[][]):SectionSpec[]{return rows.map(([size,h,b,tw,tf,r,A,I,Iminor])=>({id:`${category}-${size}`,name:`${category} ${size}`,category,E:steel,A:A/1e4,I:I/1e8,Iminor:Iminor/1e8,geometry:{shape:'i',h,b,tw,tf,t:0,r},source:category==='IPE'?IPE_SOURCE:HE_SOURCE,method:'Tabulated section properties · major-axis bending'}));}
 export const sections:SectionSpec[]=[
@@ -35,5 +37,5 @@ export const sections:SectionSpec[]=[
  ...rolled('IPE',[[120,120,64,4.4,6.3,7,13.2,318,27.7],[160,160,82,5,7.4,9,20.1,869,68.3],[200,200,100,5.6,8.5,12,28.5,1940,142],[240,240,120,6.2,9.8,15,39.1,3890,284],[300,300,150,7.1,10.7,15,53.8,8360,604]]),
  ...[['SHS',60,60,3],['SHS',100,100,5],['SHS',150,150,6.3],['RHS',100,50,4],['RHS',150,100,5],['RHS',200,100,6.3],['CHS',60.3,60.3,3.2],['CHS',114.3,114.3,5],['CHS',168.3,168.3,6.3]].map(([cat,h,b,t])=>{const category=String(cat),geometry:SectionGeometry={shape:category==='CHS'?'chs':'rhs',h:+h,b:+b,tw:0,tf:0,t:+t,r:category==='CHS'?0:1.5*(+t),...(category==='CHS'?{}:{ri:+t})};return {id:`${category}-${h}-${b}-${t}`,name:category==='CHS'?`CHS ${h} × ${t}`:`${category} ${h} × ${b} × ${t}`,category,E:steel,geometry,...sectionProperties(geometry),source:HOLLOW_SOURCE,method:category==='CHS'?'Calculated from nominal circular dimensions':'Calculated nominal hot-finished shape · outside radius 1.5t, inside radius 1.0t'};}),
 ];
-export function sectionForBeam(b:Beam):SectionSpec {const found=b.section??sections.find(s=>s.name===b.profile&&Math.abs(s.A/b.A-1)<.005&&Math.abs(s.I/b.I-1)<.005);return {...found,id:found?.id??'current',name:b.profile,category:found?.category??'Custom',E:b.E,A:b.A,I:b.I,massProperties:b.massProperties};}
-export function applySection(m:Model,ids:string[],section:SectionSpec,wholeBeam=false){if(!validSection(section))throw Error('Invalid section properties.');const next=structuredClone(m),families=new Set(next.beams.filter(b=>ids.includes(b.id)).map(b=>b.family));next.beams.filter(b=>wholeBeam?families.has(b.family):ids.includes(b.id)).forEach(b=>Object.assign(b,{profile:section.name,E:section.E,A:section.A,I:section.I,section:structuredClone(section),massProperties:structuredClone(section.massProperties??{})}));return next;}
+export function sectionForBeam(b:Beam):SectionSpec {const found=b.section??sections.find(s=>s.name===b.profile&&Math.abs(s.A/b.A-1)<.005&&Math.abs(s.I/b.I-1)<.005);return {...found,id:found?.id??'current',name:b.profile,category:found?.category??'Custom',E:b.E,A:b.A,I:b.I,massProperties:b.massProperties,material:b.material??found?.material};}
+export function applySection(m:Model,ids:string[],section:SectionSpec,wholeBeam=false){if(!validSection(section))throw Error('Invalid section properties.');const next=structuredClone(m),families=new Set(next.beams.filter(b=>ids.includes(b.id)).map(b=>b.family));next.beams.filter(b=>wholeBeam?families.has(b.family):ids.includes(b.id)).forEach(b=>Object.assign(b,{profile:section.name,E:section.material?.E??b.material?.E??b.E,A:section.A,I:section.I,section:structuredClone(section),...(section.material?{material:structuredClone(section.material)}:{}),massProperties:structuredClone(section.massProperties??{})}));return next;}

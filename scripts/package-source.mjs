@@ -6,7 +6,7 @@ const root=process.cwd(),publicDir=path.join(root,'public');
 fs.mkdirSync(publicDir,{recursive:true});
 fs.copyFileSync('LICENSE',path.join(publicDir,'LICENSE.txt'));
 let notices='Frame Studio third-party notices\n\nApplication source: GPL-3.0-only. Dependencies retain their own licenses.\n';
-for(const name of ['react','react-dom','scheduler','lucide-react','vite']){
+for(const name of ['react','react-dom','scheduler','lucide-react','vite','katex']){
  const directory=path.join(root,'node_modules',name),pkg=JSON.parse(fs.readFileSync(path.join(directory,'package.json'),'utf8'));
  const license=fs.readdirSync(directory).find(file=>/^licen[sc]e(\.|$)/i.test(file));
  if(!license)throw Error(`No license notice found for ${name}`);

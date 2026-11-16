@@ -1,8 +1,9 @@
+import {display,formatNumber} from './units';
 import type {Model,CadDimension} from './model';
 import {cadPoint,dimensionValue} from './model';
 import {intersection} from './cad';
 import type {Point} from './cad';
-export function dimensionText(m:Model,d:CadDimension){return ['angle','direction'].includes(d.kind)?`${+dimensionValue(m,d).toFixed(2)}°`:`${+(dimensionValue(m,d)*(m.dimensionUnits==='m'?1:1000)).toFixed(2)} ${m.dimensionUnits==='m'?'m':'mm'}`;}
+export function dimensionText(m:Model,d:CadDimension){return ['angle','direction'].includes(d.kind)?`${formatNumber(dimensionValue(m,d),2)}°`:display(m,dimensionValue(m,d),'length',3);}
 export default function DimensionLayer({model:m,screen,onEdit,onDrag,preview,conflictId}:{model:Model;screen:(p:Point)=>Point;onEdit?:(id:string,e:React.MouseEvent)=>void;onDrag?:(id:string,e:React.PointerEvent)=>void;preview?:CadDimension|null;conflictId?:string}){
  const tick=(p:Point,n:Point,t:Point)=><line x1={p.x-n.x*4-t.x*3} y1={p.y-n.y*4-t.y*3} x2={p.x+n.x*4+t.x*3} y2={p.y+n.y*4+t.y*3}/>;
  const line=(a:Point,b:Point)=><line x1={a.x} y1={a.y} x2={b.x} y2={b.y}/>;

@@ -4,7 +4,7 @@ Open **Building → Sections** (or **Sections…** under a selected beam) to bro
 
 **New section** and **Create from this section** make an independent editable profile. Choose a standard or saved template, change its name, shape and dimensions, and save it. Area and the two second moments of area recalculate from the dimensions. A direct A/I mode supports sections for which a shape is unavailable. Optional CAD mass and inertia fields remain reference data, separate from bending stiffness. Editing a library entry does not silently change previously assigned members: apply the saved section to the desired member or continuous beam group explicitly.
 
-Selected members show **Beam settings** first: start/end rotational releases, continuity and beam/strut behaviour. The foldable **Beam section** area shows the assigned section with dimensions. Hover or focus the drawing for read-only specifications. Geometry and properties are edited in the library.
+Selected members show **Beam settings** first: start/end rotational releases, continuity and beam/strut behaviour. The foldable **Beam section** area shows the assigned section with dimensions. Hover or focus its name for read-only specifications. Geometry and properties are edited in the library.
 
 ## Data and calculation conventions
 
@@ -24,4 +24,4 @@ While drawing, **Enter** finishes and returns to Select; **Escape** cancels the 
 
 Point and distributed forces can be set **Normal to member** and reversed. Their direction follows geometry edits, while their magnitude remains unchanged. Typing another global direction returns the load to a global vector.
 
-The deflection diagram labels each member's peak sampled displacement magnitude in mm, with duplicate peaks at shared points consolidated. The green curve is exaggerated for visibility. These are elastic displacements under the selected load combination. Plasticity, yielding and permanent deformation after unloading are outside this solver's scope.
+The deflection diagram labels each member’s peak sampled displacement magnitude in the selected units, with duplicate peaks at shared points consolidated. The curve is exaggerated for visibility. Linear elastic mode shows recoverable deflection; Material mode additionally calculates yielding and residual deformation through unloading. See [material analysis and reports](material-analysis.md). Section material is editable under **Material & failure limits**; changing only the profile shape preserves an already assigned material.
