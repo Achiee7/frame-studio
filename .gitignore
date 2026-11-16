@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env*
+.DS_Store
+*.log
+
+public/frame-studio-source.zip
+public/LICENSE.txt
+public/THIRD_PARTY_NOTICES.txt

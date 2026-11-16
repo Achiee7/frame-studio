@@ -1,2 +1,76 @@
-# frame-studio
-Open-source 2D structural frame editor and force calculator with browser-local project storage. GPL-3.0.
+# Frame Studio
+
+An open-source, browser-based editor and calculator for 2D structural frames. Draw beams and struts, add supports and loads anywhere on a member, constrain and dimension the sketch, then inspect reactions, axial forces, shear, bending moments and deflections.
+
+Projects, recovery drafts and named beam presets stay in your browser. There is no account, collaboration service, database, API key, analytics or backend. No project data is sent to a server. This edition is independent of the separately hosted collaborative app.
+
+![Frame Studio reaction results](docs/screenshot.jpg)
+
+## Run locally
+
+Install Node.js 22.18 or newer (Node 24 is used in CI), then:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open the local URL printed by Vite. To verify the production build:
+
+```sh
+npm test
+npm run build
+npm run preview
+```
+
+The `dist/` directory is the complete static website. Serve it over HTTP or HTTPS; opening `index.html` as a `file://` URL is not supported. The app makes no external font requests. Once loaded, calculations and storage run locally; this is not an installable offline PWA.
+
+## Save projects
+
+Use the save icon next to undo/redo. Open **Menu → Projects** to reopen a project, save a copy, archive/restore projects, or import/export JSON. A recovery draft is saved automatically and survives refresh. Named sections and CAD mass inertia values are kept in the local beam library.
+
+**Back up saved projects & beams** exports all named projects (including archived ones) and named beam presets. Save the current draft first, or export it separately. Importing a backup merges it with existing browser data; conflicting IDs are copied to new IDs instead of overwriting an existing project.
+
+Browser storage uses `localStorage`, not cookies. It can hold full frame models without sending them with web requests. It belongs to the current browser profile and website origin; another device, private browsing, a changed domain, or clearing browser/site data does not retain the same library. Keep JSON backups of important work. The app reports storage failures rather than claiming a failed save succeeded.
+
+Exported single-frame JSON uses the same `frame-studio-v1` format as the collaborative edition. To move a frame from there, export its JSON and import it here. Nothing is imported automatically from the shared service.
+
+## Publish on GitHub Pages
+
+1. Create your own GitHub repository and upload this folder's contents, including `.github/workflows/pages.yml` and `package-lock.json`. Do not upload `node_modules/` or `dist/`.
+2. Push to the `main` branch.
+3. In **Settings → Pages → Build and deployment**, choose **GitHub Actions**. Rerun the workflow if the initial run occurred before Pages was enabled.
+4. The included workflow tests, builds and publishes `dist/`. Its deployment URL appears in the Actions run and repository Pages settings.
+
+Vite uses relative asset paths (`base: './'`), so the same build works at a repository subpath such as `/frame-studio/` or at a custom-domain root. If your default branch is not `main`, update the workflow's branch filter.
+
+Other static hosts can also serve `dist/`. `vite preview` is only a local preview server, not a production hosting service. The workflow follows the [Vite deployment guide](https://vite.dev/guide/static-deploy.html).
+
+## Modelling and analysis
+
+- Global geometry uses meters, force kN, moment kNm, and stiffness kN/m². The UI converts GPa, cm², cm⁴, millimeters and CAD inertia units where shown.
+- Rigid joints share translation and rotation. Crossing pins share translation while preserving separate rotations for different continuous member families. An internal hinge releases all attached member ends. Individual end releases override joint continuity.
+- Crossings remain disconnected until joined. Geometric collinearity does not itself make two segments one physical beam. Dimension constraints affect the undeformed sketch, not the structural stiffness equations.
+- Loads at member ends stay attached to the corresponding node. Interior loads can keep an explicit distance from a member end.
+- Each force vector or moment can be independently marked as reversible. Impossible combined cases can be excluded before report generation. Reports use only included cases, a common bending-diagram scale, equilibrium residuals and a final complete node-results table.
+
+The solver uses a diagonally scaled direct stiffness method for small-displacement, linear elastic Euler–Bernoulli plane frames and axial-only struts. It rejects detected unstable systems. It does not check capacity, buckling, plasticity, second-order response, fatigue, dynamics or design-code compliance. Mass moments of inertia are reference data, not area inertia for static bending. Verify the model and analysis independently before engineering design use.
+
+## Tests and source layout
+
+`npm test` runs analytical beam/truss benchmarks, an independent Python-derived four-arm reference, equilibrium checks, CAD dimensions and constraints, rigid/floating sketch behaviour, load placement, reversals, reports and browser-storage failure/backup tests.
+
+- `app/solver.ts`: finite element analysis.
+- `app/model.ts`, `app/cad.ts`: model validation and sketch constraints.
+- `app/studio.tsx`: editor interface.
+- `app/local-storage.ts`: browser project, recovery and preset storage.
+- `app/frame-report.ts`, `app/frame-drawing.ts`: printable reports.
+- `scripts/`: tests, independent reference and source-release packager.
+
+The UI and solver were independently implemented. No source code or private assets from the original FrameDesign website are included. Only authored application files and sanitized numerical test fixtures were retained from the collaborative edition; authentication, deployment identifiers, credentials and stored shared projects are excluded.
+
+## License
+
+Copyright © 2026 Frame Studio contributors. Application code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE). This program comes without warranty. Dependencies retain their respective licenses.
+
+Every production build includes `LICENSE.txt`, dependency notices, and a matching `frame-studio-source.zip`. **Menu → About & license** exposes those files. Keep these files and the corresponding source available when redistributing the built website. The source archive is generated automatically from this checkout during `npm run build`; generated archives, dependencies and build output are excluded from the archive itself.
