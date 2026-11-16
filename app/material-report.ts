@@ -3,12 +3,13 @@ import type {MaterialResult} from './plastic';
 import {sectionFibers} from './plastic';
 import {materialForBeam} from './materials';
 import {frameDrawing,escapeHtml as esc} from './frame-drawing';
-import {display,formatNumber} from './units';
+import {display,modelNumber} from './units';
 import {equation as eq,texNumber as n,calculationCss} from './report-math';
 import {equilibriumSteps} from './report-calculations';
 const table=(heads:string[],rows:string[][])=>`<table><thead><tr>${heads.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>'<tr>'+row.map(x=>`<td>${x}</td>`).join('')+'</tr>').join('')}</tbody></table>`;
 function pathChart(r:MaterialResult,model:Model){const max=Math.max(r.loaded.maxDisplacement,...r.history.map(p=>p.displacement),...r.unloadingHistory.map(p=>p.displacement),1e-9),points=(rows:MaterialResult['history'])=>rows.map(p=>`${70+p.factor*630},${280-p.displacement/max*230}`).join(' ');return `<svg viewBox="0 0 800 330" role="img" aria-label="Calculated loading and unloading path" class="path-chart"><path d="M70 40V280H720" stroke="#82988b" fill="none"/><polyline points="${points(r.history)}" stroke="#248653" fill="none" stroke-width="3"/><polyline points="${points(r.unloadingHistory)}" stroke="#df8c24" fill="none" stroke-width="3"/><g font-family="Arial" font-size="12" fill="#3c5848"><text x="70" y="310">0%</text><text x="680" y="310">100% load</text><text x="80" y="25">Maximum displacement · ${display(model,max/1000,'deflection',4)}</text><text x="480" y="25" fill="#248653">Loading</text><text x="570" y="25" fill="#bd7015">Unloading</text><text x="80" y="266">Residual: ${r.maxResidual===undefined?'unavailable':display(model,r.maxResidual/1000,'deflection',5)}</text></g></svg>`;}
 export function materialReportHtml(model:Model,title:string,r:MaterialResult,factors:Record<string,number>){
+ const formatNumber=(v:number,digits=3)=>modelNumber(model,v,digits);
  const trace=r.trace,beam=trace?model.beams.find(b=>b.id===trace.beam):undefined,m=beam?materialForBeam(beam):undefined,loadedFactors=Object.fromEntries(Object.entries(factors).map(([k,v])=>[k,v*r.loadFactor]));
  const audit={model,factors,analysis:'Small-displacement distributed-fibre bilinear kinematic hardening',result:r};
  const materialRows=model.beams.map((b,i)=>{const m=materialForBeam(b);return [`B${i+1} · ${esc(b.profile)}`,esc(m.name),display(model,m.E/1000,'stress',4),display(model,m.fy,'stress',4),formatNumber(m.hardening*100,4)+'%',m.fu===undefined?'Not entered':display(model,m.fu,'stress',4),m.ultimateStrain===undefined?'Not entered':formatNumber(m.ultimateStrain*100,4)+'%'];});

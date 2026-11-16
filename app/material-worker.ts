@@ -1,2 +1,2 @@
 import {solveMaterial} from './plastic';
-self.onmessage=e=>{try{self.postMessage({result:solveMaterial(e.data.model,e.data.factors)});}catch(error){self.postMessage({error:(error as Error).message});}};
+self.onmessage=e=>{const {key,input}=e.data;try{self.postMessage({key,result:solveMaterial(input.model,input.factors)});}catch(error){self.postMessage({key,error:(error as Error).message});}};
