@@ -1,11 +1,12 @@
 import {calculationCss} from './report-math';
 import {workedElastic,equilibriumSteps} from './report-calculations';
-import {display,getUnits,quantity} from './units';
+import {display,getUnits,quantity,modelNumber} from './units';
 import type {Model} from './model';
 import type {reversals} from './reversals';
-import {frameDrawing,escapeHtml as esc,reportNumber as f,supportMarkup} from './frame-drawing';
+import {frameDrawing,escapeHtml as esc,supportMarkup} from './frame-drawing';
 type Study=ReturnType<typeof reversals>;
 export function reportHtml(model:Model,title:string,data:Study,excluded:string[]){
+ const f=(value:number,digits=3)=>modelNumber(model,value,digits);
  const maxM=data.cases.reduce((a,b)=>a.result.maxMoment>=b.result.maxMoment?a:b),maxU=data.cases.reduce((a,b)=>a.result.maxDisplacement>=b.result.maxDisplacement?a:b);
  const row=(xs:string[])=>'<tr>'+xs.map(x=>`<td>${x}</td>`).join('')+'</tr>',head=(xs:string[])=>'<thead><tr>'+xs.map(x=>`<th>${x}</th>`).join('')+'</tr></thead>';
  const caseName=(c:Study['cases'][number])=>c.label??`X ${c.multipliers.fx>0?'as drawn':'reversed'} · Y ${c.multipliers.fy>0?'as drawn':'reversed'} · Moment ${c.multipliers.m>0?'as drawn':'reversed'}`;
