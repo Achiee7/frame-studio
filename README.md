@@ -10,6 +10,17 @@ Projects, recovery drafts and named beam presets stay in your browser. There is 
 
 ![Frame Studio reaction results](docs/screenshot.jpg)
 
+## Sections and easier modelling
+
+- Browse HEA, HEB, IPE and hollow sections in a category tree with profile previews, dimensioned drawings and property details.
+- Star favourite sections, or create named custom profiles from a standard shape and edit all dimensions. Favourites, saved sections and CAD mass properties stay in your browser and travel with backups.
+- Member settings put end releases and continuity first, followed by a foldable section preview.
+- Box-select geometry, use Shift to extend a selection, and navigate the optional hierarchical model tree.
+- Press Enter to finish drawing; Escape cancels the preview. Member lengths appear on the canvas.
+- Apply point or distributed forces normal to a beam, following its angle. Deflection diagrams show actual displacement values in mm.
+
+See [section data, calculation conventions and controls](docs/sections.md) for details.
+
 ## Save projects
 
 Use the save icon next to undo/redo. Open **Menu → Projects** to reopen a project, save a copy, archive/restore projects, or import/export JSON. A recovery draft is saved automatically and survives refresh. Named sections and CAD mass inertia values are kept in the local beam library.
