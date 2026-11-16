@@ -1,6 +1,8 @@
+import {assessResult} from './analysis-validity.ts';
+import type {Applicability} from './analysis-validity.ts';
 import type {Model,Node,Beam} from './model';
 export type Sample={beam:string;t:number;x:number;y:number;ux:number;uy:number;N:number;V:number;M:number};
-export type Result={samples:Sample[];reactions:{node:string;fx:number;fy:number;m:number}[];maxDisplacement:number;maxMoment:number;nodeDisplacements:{node:string;ux:number;uy:number;rotations:{key:string;value:number}[]}[]};
+export type Result={applicability?:Applicability;samples:Sample[];reactions:{node:string;fx:number;fy:number;m:number}[];maxDisplacement:number;maxMoment:number;nodeDisplacements:{node:string;ux:number;uy:number;rotations:{key:string;value:number}[]}[]};
 // Linear elastic Euler–Bernoulli 2D frame stiffness method. SI geometry, kN force.
 export function assembleFrame(model:Model,factors:Record<string,number>={G:1,Q:1,W:1},divisions=8,splitStrutLoads=false) {
  if(!model.beams.length)throw Error('Draw at least one member to analyse.');
@@ -54,7 +56,7 @@ export function solve(model:Model,factors:Record<string,number>={G:1,Q:1,W:1}):R
  }
  const R=K.map((row,i)=>row.reduce((s,v,j)=>s+v*U[j],0)-F[i]);const reactions=model.nodes.filter(n=>n.support!=='free').map(n=>({node:n.id,fx:R[keys.indexOf(n.id+':x')]??0,fy:n.support==='spring'?-(n.spring??10000)*U[keys.indexOf(n.id+':y')]:R[keys.indexOf(n.id+':y')]??0,m:keys.reduce((s,k,i)=>s+(k.startsWith(n.id+':r:')?R[i]:0),0)}));
  const nodeDisplacements=model.nodes.map(n=>({node:n.id,ux:U[keys.indexOf(n.id+':x')]??0,uy:U[keys.indexOf(n.id+':y')]??0,rotations:keys.flatMap((key,i)=>key.startsWith(n.id+':r:')?[{key,value:U[i]}]:[])}));
- return {samples,reactions,nodeDisplacements,maxDisplacement:Math.max(...samples.map(s=>Math.hypot(s.ux,s.uy)))*1000,maxMoment:Math.max(...samples.map(s=>Math.abs(s.M)))};
+ const result:Result={samples,reactions,nodeDisplacements,maxDisplacement:Math.max(...samples.map(s=>Math.hypot(s.ux,s.uy)))*1000,maxMoment:Math.max(...samples.map(s=>Math.abs(s.M)))};return {...result,applicability:assessResult(model,result)};
 }
 
 

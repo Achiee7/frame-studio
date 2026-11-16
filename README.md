@@ -109,3 +109,5 @@ The UI and solver were independently implemented. No source code or private asse
 Copyright © 2026 Frame Studio contributors. Application code is licensed under **GPL-3.0-only**; see [LICENSE](LICENSE). This program comes without warranty. Dependencies retain their respective licenses.
 
 Every production build includes `LICENSE.txt`, dependency notices, and a matching `frame-studio-source.zip`. **Menu → About & license** exposes those files. Keep these files and the corresponding source available when redistributing the built website. The source archive is generated automatically from this checkout during `npm run build`; generated archives, dependencies and build output are excluded from the archive itself.
+
+Diagram scales remain fixed during live editing; use **Fit diagram** in the left result options to reset them. Both solvers screen their small-displacement applicability. Out-of-range extrapolations are not valid deformation or failure predictions; see [analysis method and limits](docs/material-analysis.md). Model tree, build tools and result options open on the left.
