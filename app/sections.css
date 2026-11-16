@@ -12,3 +12,5 @@
 
 /* Keep the full profile visible while a dimension is edited. */
 .profile-size-editor{position:relative;left:auto;right:auto;bottom:auto;margin-top:8px}
+
+.field-legend-toggle{display:none}@media(max-width:700px){.field-legend{top:110px;bottom:auto;width:230px;padding:0;pointer-events:auto}.field-legend-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:0;background:transparent;padding:9px 10px;font-size:9px}.field-legend-content{display:none;padding:10px 12px}.field-legend.expanded .field-legend-content{display:block}.field-legend-toggle>span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
