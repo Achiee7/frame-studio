@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {example,beamDefaults,enforceConstraints,geometryError,geometrySatisfied,validModel,joinContinuous,splitBeam} from '../app/model.ts';
+import {solve} from '../app/solver.ts';
+const near=(a,b,t=1e-7)=>assert.ok(Math.abs(a-b)<t,`${a} != ${b}`);
+const node=(id,x,y)=>({id,x,y,joint:'rigid',support:'free'});
+const beam=(id,a,b,family=id)=>({id,a,b,family,...beamDefaults});
+const constraint=(reference,target,type='collinear',id=reference+target)=>({id,reference,target,type});
+let m={nodes:[node('a',0,0),node('b',4,0),node('c',6,2)],beams:[beam('AB','a','b'),beam('BC','b','c')],loads:[],constraints:[constraint('AB','BC')]};
+const length=Math.sqrt(8),ref=structuredClone(m.nodes.slice(0,2));enforceConstraints(m);assert.ok(geometrySatisfied(m));near(m.nodes[2].x,4+length);near(m.nodes[2].y,0);assert.deepEqual(m.nodes.slice(0,2),ref);assert.notEqual(m.beams[0].family,m.beams[1].family);
+m.nodes[1].y=2;enforceConstraints(m,'b');assert.ok(geometrySatisfied(m));near(m.nodes[0].y,0);near(m.nodes[1].y,2);
+m.nodes[2].y+=3;enforceConstraints(m,'c');assert.ok(geometrySatisfied(m));assert.ok(validModel(m));assert.ok(validModel(JSON.parse(JSON.stringify(m))));
+m={nodes:[node('a',0,0),node('b',4,0),node('c',6,2),node('d',8,3)],beams:[beam('AB','a','b'),beam('CD','c','d')],loads:[],constraints:[constraint('AB','CD','rightAngle')]};
+enforceConstraints(m);near(m.nodes[2].x,6);near(m.nodes[2].y,2);near(m.nodes[3].x,6);near(Math.hypot(m.nodes[3].x-6,m.nodes[3].y-2),Math.sqrt(5));assert.ok(validModel(m));
+m.constraints[0].type='collinear';enforceConstraints(m);near(m.nodes[2].y,0);near(m.nodes[3].y,0);assert.equal(m.nodes.length,4);assert.ok(validModel(m));
+assert.throws(()=>enforceConstraints({...m,constraints:[...m.constraints,constraint('AB','CD','rightAngle','duplicate')]}),/already follows/);
+assert.throws(()=>enforceConstraints({...m,constraints:[constraint('AB','CD'),constraint('CD','AB')]}),/cycle/);
+assert.equal(validModel({...m,constraints:[constraint('missing','CD')]}),false);
+assert.equal(validModel({...m,constraints:[{...m.constraints[0],type:'nonsense'}]}),false);
+m={nodes:[node('a',0,0),node('b',4,0),node('c',5,2),node('d',7,5)],beams:[beam('AB','a','b'),beam('BC','b','c'),beam('CD','c','d')],loads:[],constraints:[constraint('BC','CD','collinear'),constraint('AB','BC','rightAngle')]};enforceConstraints(m);assert.ok(geometrySatisfied(m));assert.ok(validModel(m));
+m={nodes:[node('a',0,0),node('b',4,0),node('c',4,3)],beams:[beam('AB','a','b'),beam('BC','b','c'),beam('CA','c','a')],loads:[],constraints:[constraint('AB','BC','rightAngle'),constraint('BC','CA','rightAngle')]};assert.throws(()=>enforceConstraints(m),/conflict|zero length/);
+m=example();m.nodes.push(node('split',6,3));splitBeam(m,'B4',.5,'split');enforceConstraints(m);assert.equal(m.constraints.length,3);assert.ok(validModel(m));
+m=example();const constrained=solve(m);m.constraints=[];const freeGeometry=solve(m);near(constrained.maxMoment,freeGeometry.maxMoment);near(constrained.maxDisplacement,freeGeometry.maxDisplacement);
+// Collinear segments at a crossing pin stay structurally released until joined.
+m={nodes:[{...node('a',0,0),support:'pinned'},{...node('b',2,0),joint:'pin'},{...node('c',4,0),support:'roller'}],beams:[beam('AB','a','b'),beam('BC','b','c')],loads:[{id:'L',beam:'BC',t:0,type:'force',fx:0,fy:-10,m:0,case:'Q'}],constraints:[constraint('AB','BC')]};enforceConstraints(m);assert.throws(()=>solve(m),/Unstable/);joinContinuous(m,'AB','BC');const r=solve(m);near(r.reactions[0].fy,5,1e-6);near(r.maxMoment,10,1e-6);
+m.nodes[1].joint='hinge';assert.throws(()=>joinContinuous(m,'AB','BC'),/hinge/);assert.throws(()=>solve(m),/Unstable/);
+m.nodes[1].joint='pin';m.beams[0].releaseB=true;assert.throws(()=>joinContinuous(m,'AB','BC'),/release/);
+m.beams[0].releaseB=false;m.nodes.push(node('d',2,2));m.beams.push(beam('BD','b','d'));assert.throws(()=>joinContinuous(m,'AB','BD'),/branch/);
+console.log('Passed: collinear/shared and separate nodes, right angles, reference edits, constrained drags, chains, conflicts, cycles, validation, split persistence, JSON round-trip, geometry-vs-structural continuity, releases and branching.');
