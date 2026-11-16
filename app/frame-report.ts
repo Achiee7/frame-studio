@@ -1,3 +1,4 @@
+import {assessResult} from './analysis-validity';
 import {calculationCss} from './report-math';
 import {workedElastic,equilibriumSteps} from './report-calculations';
 import {display,getUnits,quantity,modelNumber} from './units';
@@ -6,6 +7,7 @@ import type {reversals} from './reversals';
 import {frameDrawing,escapeHtml as esc,supportMarkup} from './frame-drawing';
 type Study=ReturnType<typeof reversals>;
 export function reportHtml(model:Model,title:string,data:Study,excluded:string[]){
+ const invalid=data.cases.filter(c=>!(c.result.applicability??assessResult(model,c.result)).ok);if(invalid.length)throw Error('Cannot generate a calculation report: '+invalid.map(c=>c.id).join(', ')+' exceed the small-displacement model range. No reliable target result is available.');
  const f=(value:number,digits=3)=>modelNumber(model,value,digits);
  const maxM=data.cases.reduce((a,b)=>a.result.maxMoment>=b.result.maxMoment?a:b),maxU=data.cases.reduce((a,b)=>a.result.maxDisplacement>=b.result.maxDisplacement?a:b);
  const row=(xs:string[])=>'<tr>'+xs.map(x=>`<td>${x}</td>`).join('')+'</tr>',head=(xs:string[])=>'<thead><tr>'+xs.map(x=>`<th>${x}</th>`).join('')+'</tr></thead>';
