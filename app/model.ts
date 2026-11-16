@@ -1,9 +1,11 @@
+import {validSection} from './sections.ts';
+import type {SectionSpec} from './sections.ts';
 export type Joint = 'rigid'|'pin'|'hinge';
 export type Support = 'free'|'pinned'|'roller'|'rollerX'|'fixed'|'guided'|'spring';
 export type Node = {id:string;x:number;y:number;joint:Joint;support:Support;spring?:number;settlement?:number};
 export type MassProperties = {material?:string;reference?:string;mass?:number;density?:number;specimenLength?:number;ixx?:number;iyy?:number;izz?:number;ixy?:number;ixz?:number;iyz?:number};
-export type Beam = {massProperties?:MassProperties;id:string;a:string;b:string;family:string;kind:'beam'|'strut';profile:string;E:number;A:number;I:number;releaseA?:boolean;releaseB?:boolean};
-export type Load = {canReverse?:boolean;attachment?:'start'|'end';position?:{from:'start'|'end';distance:number;fixed?:boolean};id:string;beam:string;t:number;type:'force'|'moment'|'distributed';fx:number;fy:number;m:number;case:string};
+export type Beam = {section?:SectionSpec;massProperties?:MassProperties;id:string;a:string;b:string;family:string;kind:'beam'|'strut';profile:string;E:number;A:number;I:number;releaseA?:boolean;releaseB?:boolean};
+export type Load = {normal?:1|-1;canReverse?:boolean;attachment?:'start'|'end';position?:{from:'start'|'end';distance:number;fixed?:boolean};id:string;beam:string;t:number;type:'force'|'moment'|'distributed';fx:number;fy:number;m:number;case:string};
 export type GeometryConstraint = {suppressed?:boolean;id:string;type:'collinear'|'rightAngle';reference:string;target:string};
 export type CadDimension = {id:string;kind:'length'|'aligned'|'horizontal'|'vertical'|'direction'|'angle';a:string;b:string;c?:string;d?:string;value:number;driving:boolean;sense?:1|-1;offset?:number};
 export type SketchConstraint={suppressed?:boolean;scope?:'points'|'members';id:string;type:'horizontal'|'vertical'|'equal'|'parallel'|'perpendicular'|'collinear'|'coincident';a:string;b?:string};
@@ -26,7 +28,7 @@ export function validModel(v:any):v is Model {
  const bids=new Set(v.beams.map((b:any)=>b.id));if(bids.size!==v.beams.length)return false;
  if(v.constraints!==undefined){if(!Array.isArray(v.constraints)||v.constraints.length>150)return false;try{constraintOrder(v);}catch{return false;}}
  if(!validSketchConstraints(v)||!validDimensions(v))return false;
- return v.nodes.every((n:any)=>typeof n.id==='string'&&n.id!==ORIGIN&&finite(n.x)&&finite(n.y)&&['rigid','pin','hinge'].includes(n.joint)&&['free','pinned','roller','rollerX','fixed','guided','spring'].includes(n.support)&&(!n.spring||finite(n.spring))&&(!n.settlement||finite(n.settlement)))&&v.beams.every((b:any)=>validMassProperties(b.massProperties)&&typeof b.id==='string'&&typeof b.family==='string'&&typeof b.profile==='string'&&ids.has(b.a)&&ids.has(b.b)&&b.a!==b.b&&['beam','strut'].includes(b.kind)&&[b.E,b.A,b.I].every(x=>finite(x)&&x>0)&&Math.hypot(v.nodes.find((n:any)=>n.id===b.a).x-v.nodes.find((n:any)=>n.id===b.b).x,v.nodes.find((n:any)=>n.id===b.a).y-v.nodes.find((n:any)=>n.id===b.b).y)>1e-6)&&v.loads.every((l:any)=>typeof l.id==='string'&&(l.canReverse===undefined||typeof l.canReverse==='boolean')&&bids.has(l.beam)&&finite(l.t)&&l.t>=0&&l.t<=1&&['force','moment','distributed'].includes(l.type)&&[l.fx,l.fy,l.m].every(finite)&&['G','Q','W'].includes(l.case)&&validLoadPosition(v,l))&&geometrySatisfied(v)&&sketchSatisfied(v);
+ return v.nodes.every((n:any)=>typeof n.id==='string'&&n.id!==ORIGIN&&finite(n.x)&&finite(n.y)&&['rigid','pin','hinge'].includes(n.joint)&&['free','pinned','roller','rollerX','fixed','guided','spring'].includes(n.support)&&(!n.spring||finite(n.spring))&&(!n.settlement||finite(n.settlement)))&&v.beams.every((b:any)=>validSection(b.section)&&validMassProperties(b.section?.massProperties)&&validMassProperties(b.massProperties)&&typeof b.id==='string'&&typeof b.family==='string'&&typeof b.profile==='string'&&ids.has(b.a)&&ids.has(b.b)&&b.a!==b.b&&['beam','strut'].includes(b.kind)&&[b.E,b.A,b.I].every(x=>finite(x)&&x>0)&&Math.hypot(v.nodes.find((n:any)=>n.id===b.a).x-v.nodes.find((n:any)=>n.id===b.b).x,v.nodes.find((n:any)=>n.id===b.a).y-v.nodes.find((n:any)=>n.id===b.b).y)>1e-6)&&v.loads.every((l:any)=>typeof l.id==='string'&&(l.normal===undefined||l.normal===1||l.normal===-1)&&(l.canReverse===undefined||typeof l.canReverse==='boolean')&&bids.has(l.beam)&&finite(l.t)&&l.t>=0&&l.t<=1&&['force','moment','distributed'].includes(l.type)&&[l.fx,l.fy,l.m].every(finite)&&['G','Q','W'].includes(l.case)&&validLoadPosition(v,l))&&geometrySatisfied(v)&&sketchSatisfied(v);
 }
 export function project(p:{x:number;y:number},a:{x:number;y:number},b:{x:number;y:number}){const dx=b.x-a.x,dy=b.y-a.y;const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy)));return {x:a.x+t*dx,y:a.y+t*dy,t,d:Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy)};}
 export function crossings(m:Model){const out:{a:string;b:string;x:number;y:number;ta:number;tb:number}[]=[];for(let i=0;i<m.beams.length;i++)for(let j=i+1;j<m.beams.length;j++){const a=m.beams[i],b=m.beams[j];if([a.a,a.b].some(x=>[b.a,b.b].includes(x)))continue;const p=m.nodes.find(n=>n.id===a.a)!,q=m.nodes.find(n=>n.id===a.b)!,r=m.nodes.find(n=>n.id===b.a)!,s=m.nodes.find(n=>n.id===b.b)!;const dx=q.x-p.x,dy=q.y-p.y,ex=s.x-r.x,ey=s.y-r.y,den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)continue;const ta=((r.x-p.x)*ey-(r.y-p.y)*ex)/den,tb=((r.x-p.x)*dy-(r.y-p.y)*dx)/den;if(ta>=-1e-7&&ta<=1+1e-7&&tb>=-1e-7&&tb<=1+1e-7)out.push({a:a.id,b:b.id,x:p.x+ta*dx,y:p.y+ta*dy,ta,tb});}return out;}
@@ -152,6 +154,7 @@ export type SketchSolveOptions={preferredNodes?:string[]};
 export function enforceConstraints(m:Model,editedNode?:string,options:SketchSolveOptions={}){
  enforceGeometry(m,editedNode,options);
  updateLoadStations(m);
+ orientLoads(m);
 }
 export function enforceGeometry(m:Model,editedNode?:string,options:SketchSolveOptions={}){
  constraintOrder(m);
@@ -160,6 +163,7 @@ export function enforceGeometry(m:Model,editedNode?:string,options:SketchSolveOp
 }
 export class LoadPositionError extends Error{loadIds:string[];constructor(ids:string[]){super(`The position dimension of ${ids.map(id=>'load '+id).join(', ')} lies beyond the shortened member. Keep its distance, or attach the load to the member end. This is not a geometric over-constraint.`);this.name='LoadPositionError';this.loadIds=ids;}}
 export class SketchSolveError extends Error{constructor(){super('The geometry solver did not converge. This may be a conflict or a numerical failure.');this.name='SketchSolveError';}}
+export function orientLoads(m:Model){for(const l of m.loads)if(l.normal&&l.type!=='moment'){const [a,b]=endpoints(m,l.beam),L=Math.hypot(b.x-a.x,b.y-a.y),mag=Math.hypot(l.fx,l.fy);l.fx=-(b.y-a.y)/L*mag*l.normal;l.fy=(b.x-a.x)/L*mag*l.normal;}}
 function updateLoadStations(m:Model){
  const blocked=m.loads.filter(l=>{if(l.attachment||!l.position)return false;const [a,b]=endpoints(m,l.beam);return l.position.distance>Math.hypot(b.x-a.x,b.y-a.y)+1e-7;}).map(l=>l.id);if(blocked.length)throw new LoadPositionError(blocked);
  for(const l of m.loads){if(l.attachment){l.t=l.attachment==='start'?0:1;delete l.position;continue;}if(!l.position)continue;const [a,b]=endpoints(m,l.beam),L=Math.hypot(b.x-a.x,b.y-a.y);l.t=Math.max(0,Math.min(1,l.position.from==='start'?l.position.distance/L:1-l.position.distance/L));}
@@ -280,7 +284,7 @@ export function sketchMobility(m:Model){
 }
 
 export function validMassProperties(p:any){if(p===undefined)return true;if(!p||typeof p!=='object'||Array.isArray(p))return false;for(const [k,v] of Object.entries(p)){if(['material','reference'].includes(k)){if(typeof v!=='string'||v.length>200)return false;}else if(['mass','density','specimenLength','ixx','iyy','izz','ixy','ixz','iyz'].includes(k)){if(typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>1e15||(!['ixy','ixz','iyz'].includes(k)&&v<0))return false;}else return false;}return true;}
-export function validBeamPreset(p:any){return !!p&&typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=100&&[p.E,p.A,p.I].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e12)&&validMassProperties(p.massProperties);}
+export function validBeamPreset(p:any){return validSection(p?.section)&&validMassProperties(p?.section?.massProperties)&&!!p&&typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=100&&[p.E,p.A,p.I].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e12)&&validMassProperties(p.massProperties);}
 
 export function validSketchConstraints(m:Model){
  if(m.sketchConstraints===undefined)return true;
@@ -405,7 +409,7 @@ function validLoadPosition(m:Model,l:Load){
 // Coordinates and structural results are unchanged by this migration.
 export function withLoadPositions(m:Model){
  for(const l of m.loads){if(l.type==='distributed')continue;if(!l.attachment&&!l.position?.fixed&&(l.t<1e-8||l.t>1-1e-8)){l.attachment=l.t<.5?'start':'end';delete l.position;}else if(!l.attachment&&!l.position){const [a,b]=endpoints(m,l.beam);l.position={from:'start',distance:l.t*Math.hypot(b.x-a.x,b.y-a.y),fixed:true};}}
- updateLoadStations(m);return m;
+ updateLoadStations(m);orientLoads(m);return m;
 }
 
 // The supplied drawing's nominal dimensions do not describe two exactly
