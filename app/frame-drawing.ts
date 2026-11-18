@@ -1,3 +1,5 @@
+import {perpendicularDimensionLayout} from './cad';
+import {cadPoint,dimensionValue} from './model';
 import {display,formatNumber,modelNumber} from './units';
 import type {Model,Support} from './model';
 import type {Result} from './solver';
@@ -22,7 +24,15 @@ export function frameDrawing(model:Model,o:Options={}){
  if(o.moment&&o.result){const max=o.momentMax??Math.max(1e-9,...o.result.samples.map(x=>Math.abs(x.M)));for(const b of model.beams){const a=model.nodes.find(n=>n.id===b.a)!,z=model.nodes.find(n=>n.id===b.b)!,L=Math.hypot(z.x-a.x,z.y-a.y),nx=-(z.y-a.y)/L,ny=-(z.x-a.x)/L,samples=o.result.samples.filter(x=>x.beam===b.id).sort((a,b)=>a.t-b.t),points=samples.map(x=>{const p=pt(x.x,x.y);return `${p.x+nx*x.M/max*38},${p.y+ny*x.M/max*38}`;}),p=pt(a.x,a.y),q=pt(z.x,z.y);s+=`<path data-moment-member="${escapeHtml(b.id)}" d="M${p.x} ${p.y} L${points.join(' L')} L${q.x} ${q.y}Z" fill="#68a48b18" stroke="#68a48b" stroke-width="1.3"/>`;}}
  // Annotations use the same on-screen placement rules as the modelling canvas.
  for(const d of dims){const A=d.a==='@origin'?{x:0,y:0}:model.nodes.find(n=>n.id===d.a),B=d.b==='@origin'?{x:0,y:0}:model.nodes.find(n=>n.id===d.b);if(!A||!B)continue;const a=pt(A.x,A.y),b=pt(B.x,B.y),offset=d.offset??42,dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1;let p:P,q:P,label:P,value=0,parts='';
-  if(d.kind==='angle'||d.kind==='direction'){const C=model.nodes.find(n=>n.id===d.c),D=model.nodes.find(n=>n.id===d.d);let vertex=a,start=0,end=Math.atan2(dy,dx);if(d.kind==='angle'&&C&&D){const c=pt(C.x,C.y),z=pt(D.x,D.y),ex=z.x-c.x,ey=z.y-c.y,den=dx*ey-dy*ex;if(Math.abs(den)>1e-8){const t=((c.x-a.x)*ey-(c.y-a.y)*ex)/den;vertex={x:a.x+dx*t,y:a.y+dy*t};}start=Math.atan2(dy,dx);end=Math.atan2(ey,ex);}const delta=Math.atan2(Math.sin(end-start),Math.cos(end-start)),r=Math.max(24,Math.abs(offset));p={x:vertex.x+r*Math.cos(start),y:vertex.y+r*Math.sin(start)};q={x:vertex.x+r*Math.cos(end),y:vertex.y+r*Math.sin(end)};label={x:vertex.x+(r+17)*Math.cos(start+delta/2),y:vertex.y+(r+17)*Math.sin(start+delta/2)};value=Math.abs(delta*180/Math.PI);parts=`<path d="M${p.x} ${p.y}A${r} ${r} 0 0 ${delta>=0?1:0} ${q.x} ${q.y}"/>`;
+  if(d.kind==='perpendicular'){
+   const center=cadPoint(model,d.c!);
+   const point=pt(center.x,center.y),layout=perpendicularDimensionLayout(a,b,point,offset);
+   ({p,q}=layout);
+   label={x:(p.x+q.x)/2,y:(p.y+q.y)/2};
+   value=dimensionValue(model,d);
+   parts=line(layout.lineStart,p,'#94a2c5')+line(point,q,'#94a2c5')+line(p,q,'#94a2c5')
+    +[p,q].map(z=>'<path d="M'+(z.x-3)+' '+(z.y-4)+'l6 8"/>').join('');
+  }else if(d.kind==='angle'||d.kind==='direction'){const C=model.nodes.find(n=>n.id===d.c),D=model.nodes.find(n=>n.id===d.d);let vertex=a,start=0,end=Math.atan2(dy,dx);if(d.kind==='angle'&&C&&D){const c=pt(C.x,C.y),z=pt(D.x,D.y),ex=z.x-c.x,ey=z.y-c.y,den=dx*ey-dy*ex;if(Math.abs(den)>1e-8){const t=((c.x-a.x)*ey-(c.y-a.y)*ex)/den;vertex={x:a.x+dx*t,y:a.y+dy*t};}start=Math.atan2(dy,dx);end=Math.atan2(ey,ex);}const delta=Math.atan2(Math.sin(end-start),Math.cos(end-start)),r=Math.max(24,Math.abs(offset));p={x:vertex.x+r*Math.cos(start),y:vertex.y+r*Math.sin(start)};q={x:vertex.x+r*Math.cos(end),y:vertex.y+r*Math.sin(end)};label={x:vertex.x+(r+17)*Math.cos(start+delta/2),y:vertex.y+(r+17)*Math.sin(start+delta/2)};value=Math.abs(delta*180/Math.PI);parts=`<path d="M${p.x} ${p.y}A${r} ${r} 0 0 ${delta>=0?1:0} ${q.x} ${q.y}"/>`;
   }else{if(d.kind==='horizontal'){const y=(offset>=0?Math.max(a.y,b.y):Math.min(a.y,b.y))+offset;p={x:a.x,y};q={x:b.x,y};value=Math.abs(B.x-A.x);}else if(d.kind==='vertical'){const x=(offset>=0?Math.max(a.x,b.x):Math.min(a.x,b.x))+offset;p={x,y:a.y};q={x,y:b.y};value=Math.abs(B.y-A.y);}else{const nx=-dy/L,ny=dx/L;p={x:a.x+nx*offset,y:a.y+ny*offset};q={x:b.x+nx*offset,y:b.y+ny*offset};value=Math.hypot(B.x-A.x,B.y-A.y);}label={x:(p.x+q.x)/2,y:(p.y+q.y)/2};parts=`<path d="M${a.x} ${a.y}L${p.x} ${p.y} M${b.x} ${b.y}L${q.x} ${q.y} M${p.x} ${p.y}L${q.x} ${q.y} M${p.x-3} ${p.y-4}l6 8 M${q.x-3} ${q.y-4}l6 8"/>`;}
   const angle=['angle','direction'].includes(d.kind),labelText=angle?`${modelNumber(model,value,2)}°`:display(model,value,'length'),width=labelText.length*6.1+14;s+=`<g data-report-dimension="${escapeHtml(d.id)}" stroke="#94a2c5" stroke-width=".9" fill="none">${parts}<rect x="${label.x-width/2}" y="${label.y-10}" width="${width}" height="20" rx="4" fill="#f9fbff" stroke="#dbe1ee"/></g>`+text({x:label.x,y:label.y+4},labelText,'#7788b4','middle',10);
  }

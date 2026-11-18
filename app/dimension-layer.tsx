@@ -1,7 +1,7 @@
 import {display,modelNumber} from './units';
 import type {Model,CadDimension} from './model';
 import {cadPoint,dimensionValue} from './model';
-import {intersection} from './cad';
+import {intersection,perpendicularDimensionLayout} from './cad';
 import type {Point} from './cad';
 export function dimensionText(m:Model,d:CadDimension){return ['angle','direction'].includes(d.kind)?`${modelNumber(m,dimensionValue(m,d),2)}°`:display(m,dimensionValue(m,d),'length',3);}
 export default function DimensionLayer({model:m,screen,onEdit,onDrag,preview,conflictId}:{model:Model;screen:(p:Point)=>Point;onEdit?:(id:string,e:React.MouseEvent)=>void;onDrag?:(id:string,e:React.PointerEvent)=>void;preview?:CadDimension|null;conflictId?:string}){
@@ -9,7 +9,14 @@ export default function DimensionLayer({model:m,screen,onEdit,onDrag,preview,con
  const line=(a:Point,b:Point)=><line x1={a.x} y1={a.y} x2={b.x} y2={b.y}/>;
  return <g className="cad-dimensions">{(preview?[preview]:m.dimensions??[]).map((d,i)=>{
  const a=screen(cadPoint(m,d.a)),b=screen(cadPoint(m,d.b)),offset=d.offset??42,dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1;let p:Point,q:Point,label:Point,draw;
- if(d.kind==='angle'||d.kind==='direction'){
+ if(d.kind==='perpendicular'){
+  const point=screen(cadPoint(m,d.c!));
+  const layout=perpendicularDimensionLayout(a,b,point,offset);
+  ({p,q}=layout);
+  label={x:(p.x+q.x)/2,y:(p.y+q.y)/2};
+  draw=<>{line(layout.lineStart,p)}{line(point,q)}{line(p,q)}
+   {tick(p,layout.tangent,layout.normal)}{tick(q,layout.tangent,layout.normal)}</>;
+ }else if(d.kind==='angle'||d.kind==='direction'){
   let vertex=a,start=0,end=Math.atan2(dy,dx);
   if(d.kind==='angle'){const c=screen(cadPoint(m,d.c!)),z=screen(cadPoint(m,d.d!));vertex=intersection(a,b,c,z)??a;start=Math.atan2(dy,dx);end=Math.atan2(z.y-c.y,z.x-c.x);}
   const delta=d.kind==='direction'?-dimensionValue(m,d)*Math.PI/180:Math.atan2(Math.sin(end-start),Math.cos(end-start)),radius=Math.max(24,Math.abs(offset)),middle=start+delta/2;
