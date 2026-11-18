@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {example,beamDefaults,enforceConstraints,seedDimension,dimensionValue,dimensionSense,validModel,dimensionsSatisfied,geometrySatisfied,splitBeam} from '../app/model.ts';
+import {example,beamDefaults,enforceConstraints,seedDimension,dimensionValue,dimensionSense,validModel,dimensionsSatisfied,geometrySatisfied,splitBeam,applyCadDimension,ORIGIN} from '../app/model.ts';
+import {dimensionCandidate,perpendicularDimensionLayout} from '../app/cad.ts';
 import {solve} from '../app/solver.ts';
 const n=(id,x,y)=>({id,x,y,joint:'rigid',support:'free'});
 const b=(id,a,z)=>({id,a,b:z,family:id,...beamDefaults});
@@ -26,3 +27,32 @@ m=base();m.dimensions=[d('angle','a','b',90,{c:'a',d:'missing'})];assert.equal(v
 m=base();m.dimensionAnchor='b';m.dimensions=[d('length','a','b',10)];seedDimension(m,m.dimensions[0]);near(m.nodes[1].x,3);near(m.nodes[1].y,4);enforceConstraints(m);near(dimensionValue(m,m.dimensions[0]),10);assert.ok(validModel(m)); // A legacy edit anchor is not a permanent world restraint.
 m=base();m.dimensions=[d('length','a','b',5)];m.nodes.push(n('mid',1.5,2));splitBeam(m,'AB',.5,'mid');enforceConstraints(m);assert.equal(m.dimensions[0].b,'b');assert.equal(m.constraints.length,1);assert.ok(validModel(m));m.dimensions[0].value=7;seedDimension(m,m.dimensions[0]);enforceConstraints(m);near(dimensionValue(m,m.dimensions[0]),7);assert.ok(geometrySatisfied(m));assert.ok(validModel(m));
 console.log('Passed: length, direction, horizontal/vertical and point distances, coupled triangles, arbitrary angles, angle wrap, reference dimensions, conflicts, collinear networks, JSON persistence, validation, and no extra structural restraint.');
+
+const offsetModel={nodes:[n('a',0,2),n('b',4,5),n('p',8,4)],beams:[b('AB','a','b')],loads:[]};
+const offsetPick=dimensionCandidate(offsetModel,{points:['p'],members:['AB']},p=>p,{x:5,y:4});
+assert.equal(offsetPick.kind,'perpendicular');
+near(offsetPick.value,3.2);
+assert.equal(offsetPick.sense,-1);
+const edited=applyCadDimension(offsetModel,{...offsetPick,id:'offset',value:1.2});
+assert.equal(edited.reason,null);
+assert.deepEqual(edited.model.nodes.slice(0,2),offsetModel.nodes.slice(0,2));
+near(edited.model.nodes[2].x,6.8);
+near(edited.model.nodes[2].y,5.6);
+assert.ok(validModel(JSON.parse(JSON.stringify(edited.model))));
+const conflict=applyCadDimension(edited.model,{...offsetPick,id:'conflict',a:'b',b:'a',sense:1,value:2});
+assert.equal(conflict.reason,'conflict');
+assert.equal(conflict.model.dimensions[1].driving,false);
+const layout=perpendicularDimensionLayout({x:0,y:0},{x:4,y:0},{x:8,y:3},2);
+assert.deepEqual(layout.lineStart,{x:4,y:0});
+assert.deepEqual(layout.p,{x:10,y:0});
+assert.deepEqual(layout.q,{x:10,y:3});
+const fromOrigin=dimensionCandidate(offsetModel,{points:[ORIGIN],members:['AB']},p=>p,{x:0,y:-2});
+const fromOriginEdit=applyCadDimension(offsetModel,{...fromOrigin,id:'origin-offset',value:2});
+assert.equal(fromOriginEdit.reason,null);
+near(dimensionValue(fromOriginEdit.model,fromOriginEdit.model.dimensions[0]),2);
+const split=edited.model;
+split.nodes.push(n('mid',2,3.5));
+splitBeam(split,'AB',.5,'mid');
+assert.ok(validModel(split));
+near(dimensionValue(split,split.dimensions[0]),1.2);
+console.log('Passed: perpendicular dimensions, reference-line extension, signed driving edits, origin, conflicting values, and split/JSON persistence.');
