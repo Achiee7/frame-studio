@@ -12,7 +12,7 @@ export type Beam = {material?:MaterialSpec;section?:SectionSpec;massProperties?:
 export type Load = {normal?:1|-1;canReverse?:boolean;attachment?:'start'|'end';position?:{from:'start'|'end';distance:number;fixed?:boolean};id:string;beam:string;t:number;type:'force'|'moment'|'distributed';fx:number;fy:number;m:number;case:string};
 export type GeometryConstraint = {suppressed?:boolean;id:string;type:'collinear'|'rightAngle';reference:string;target:string};
 export type CadDimension = {id:string;kind:'length'|'aligned'|'horizontal'|'vertical'|'direction'|'angle';a:string;b:string;c?:string;d?:string;value:number;driving:boolean;sense?:1|-1;offset?:number};
-export type SketchConstraint={suppressed?:boolean;scope?:'points'|'members';id:string;type:'horizontal'|'vertical'|'equal'|'parallel'|'perpendicular'|'collinear'|'coincident';a:string;b?:string};
+export type SketchConstraint={suppressed?:boolean;scope?:'points'|'members';id:string;type:'horizontal'|'vertical'|'equal'|'parallel'|'perpendicular'|'collinear'|'coincident'|'pointOnMember'|'midpoint';a:string;b?:string;spanEnd?:string};
 export const ORIGIN='@origin';
 export function cadPoint(m:Model,id:string){return id===ORIGIN?{id:ORIGIN,x:0,y:0}:m.nodes.find(n=>n.id===id)!;}
 export type Model = {units?:Partial<UnitSettings>;sketchConstraints?:SketchConstraint[];nodes:Node[];beams:Beam[];loads:Load[];constraints?:GeometryConstraint[];dimensions?:CadDimension[];dimensionAnchor?:string;dimensionUnits?:'m'|'mm'};
@@ -36,9 +36,11 @@ export function validModel(v:any):v is Model {
 }
 export function project(p:{x:number;y:number},a:{x:number;y:number},b:{x:number;y:number}){const dx=b.x-a.x,dy=b.y-a.y;const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy)));return {x:a.x+t*dx,y:a.y+t*dy,t,d:Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy)};}
 export function crossings(m:Model){const out:{a:string;b:string;x:number;y:number;ta:number;tb:number}[]=[];for(let i=0;i<m.beams.length;i++)for(let j=i+1;j<m.beams.length;j++){const a=m.beams[i],b=m.beams[j];if([a.a,a.b].some(x=>[b.a,b.b].includes(x)))continue;const p=m.nodes.find(n=>n.id===a.a)!,q=m.nodes.find(n=>n.id===a.b)!,r=m.nodes.find(n=>n.id===b.a)!,s=m.nodes.find(n=>n.id===b.b)!;const dx=q.x-p.x,dy=q.y-p.y,ex=s.x-r.x,ey=s.y-r.y,den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)continue;const ta=((r.x-p.x)*ey-(r.y-p.y)*ex)/den,tb=((r.x-p.x)*dy-(r.y-p.y)*dx)/den;if(ta>=-1e-7&&ta<=1+1e-7&&tb>=-1e-7&&tb<=1+1e-7)out.push({a:a.id,b:b.id,x:p.x+ta*dx,y:p.y+ta*dy,ta,tb});}return out;}
-export function splitBeam(m:Model,id:string,t:number,nodeId:string){const b=m.beams.find(b=>b.id===id)!;if(t<1e-7||t>1-1e-7){const old=t<.5?b.a:b.b;if(old!==nodeId){m.beams.forEach(b=>{if(b.a===old)b.a=nodeId;if(b.b===old)b.b=nodeId;});m.nodes=m.nodes.filter(n=>n.id!==old);for(const d of m.dimensions??[]){if(d.a===old)d.a=nodeId;if(d.b===old)d.b=nodeId;if(d.c===old)d.c=nodeId;if(d.d===old)d.d=nodeId;}for(const c of m.sketchConstraints??[])if(c.type==='coincident'||c.scope==='points'){if(c.a===old)c.a=nodeId;if(c.b===old)c.b=nodeId;}if(m.dimensionAnchor===old)m.dimensionAnchor=nodeId;}return;}
+export function splitBeam(m:Model,id:string,t:number,nodeId:string){const b=m.beams.find(b=>b.id===id)!;if(t<1e-7||t>1-1e-7){const old=t<.5?b.a:b.b;if(old!==nodeId){m.beams.forEach(b=>{if(b.a===old)b.a=nodeId;if(b.b===old)b.b=nodeId;});m.nodes=m.nodes.filter(n=>n.id!==old);for(const d of m.dimensions??[]){if(d.a===old)d.a=nodeId;if(d.b===old)d.b=nodeId;if(d.c===old)d.c=nodeId;if(d.d===old)d.d=nodeId;}for(const c of m.sketchConstraints??[])remapSketchPoint(c,old,nodeId);m.sketchConstraints=m.sketchConstraints?.filter(c=>hasSketchReferences(m,c));if(m.dimensionAnchor===old)m.dimensionAnchor=nodeId;}return;}
  const right={...b,id:uid(),a:nodeId,releaseA:false}; const oldB=b.b; b.b=nodeId;right.b=oldB;b.releaseB=false;m.beams.push(right);
  if((m.sketchConstraints??[]).some(c=>c.a===id||c.b===id)||(m.constraints??[]).some(c=>c.reference===id||c.target===id)||(m.dimensions??[]).some(d=>[[d.a,d.b],[d.c,d.d]].some(([a,z])=>a===b.a&&z===oldB||a===oldB&&z===b.a)))m.constraints=[...(m.constraints??[]),{id:uid(),type:'collinear',reference:id,target:right.id}];
+ // The original sketch span keeps its definition when an analysis member is split.
+ for(const c of m.sketchConstraints??[])if(isMemberPointConstraint(c)&&c.b===id)c.spanEnd??=oldB;
  for(const l of [...m.loads])if(l.beam===id){if(l.type==='distributed')m.loads.push({...l,id:uid(),beam:right.id});else if(l.t>t){l.beam=right.id;l.t=(l.t-t)/(1-t);}else l.t/=t;}
  for(const l of m.loads)if(l.position){const member=m.beams.find(b=>b.id===l.beam)!,a=cadPoint(m,member.a),z=cadPoint(m,member.b),L=Math.hypot(z.x-a.x,z.y-a.y);l.position.distance=(l.position.from==='start'?l.t:1-l.t)*L;}
 }
@@ -204,18 +206,32 @@ function geometrySolved(m:Model){return cadTerms(m).every(t=>Number.isFinite(t.v
 function solveCadGeometry(m:Model,editedNode?:string,options:SketchSolveOptions={}){
  if(geometrySolved(m))return;
  const original=m.nodes.map(n=>({x:n.x,y:n.y})),restore=()=>m.nodes.forEach((n,i)=>Object.assign(n,original[i]));
- const lastPoint=[...(m.sketchConstraints??[])].reverse().find(c=>!c.suppressed&&(c.type==='coincident'||c.scope==='points')&&sketchResiduals(m,c).some(v=>Math.abs(v)>1e-8));
+ const lastPoint=[...(m.sketchConstraints??[])].reverse().find(c=>!c.suppressed&&(c.type==='coincident'||c.scope==='points'||isMemberPointConstraint(c))&&sketchResiduals(m,c).some(v=>Math.abs(v)>1e-8));
  const lastDimension=[...(m.dimensions??[])].reverse().find(d=>d.driving),target=lastDimension?.kind==='angle'?lastDimension.d:lastDimension?.b;
- const preferred=options.preferredNodes?.length?options.preferredNodes:editedNode?[editedNode]:lastPoint?[lastPoint.b===ORIGIN?lastPoint.a:lastPoint.b!]:target&&target!==ORIGIN?[target]:[];
+ let preferred=options.preferredNodes?.length?options.preferredNodes:editedNode?[editedNode]:[];
+ if(!preferred.length&&lastPoint){
+  if(isMemberPointConstraint(lastPoint)){
+   preferred=lastPoint.a===ORIGIN?memberPointEnds(m,lastPoint).map(n=>n.id):[lastPoint.a];
+  }else{
+   preferred=[lastPoint.b===ORIGIN?lastPoint.a:lastPoint.b!];
+  }
+ }else if(!preferred.length&&target&&target!==ORIGIN){
+  preferred=[target];
+ }
  const neighbours=new Set(preferred);for(const b of m.beams)if(preferred.includes(b.a)||preferred.includes(b.b)){neighbours.add(b.a);neighbours.add(b.b);}
  const all=m.nodes.map(n=>n.id),tiers=[preferred,[...neighbours],all];
  const unique=new Set<string>();
  for(const tier of tiers){const key=[...tier].sort().join('|');if(unique.has(key)||!tier.length)continue;unique.add(key);restore();
-  if(lastPoint&&tier.length===all.length&&unique.size>1){if(translateToPointConstraint(m,lastPoint))return;restore();}
+  if(lastPoint&&isMemberPointConstraint(lastPoint)&&tier===preferred
+   &&memberPointEnds(m,lastPoint).every(n=>preferred.includes(n.id))){
+   if(translateToPointConstraint(m,lastPoint,preferred))return;
+   restore();
+  }
+  if(lastPoint&&tier.length===all.length&&unique.size>1){if(translateToPointConstraint(m,lastPoint,preferred))return;restore();}
   if(projectGeometry(m,new Set(tier),editedNode))return;
   // A rigid translation is the least disruptive fallback for anchoring a
   // shape-defined group. Try it after the picked point and its line first.
-  if(lastPoint&&tier.length===neighbours.size){restore();if(translateToPointConstraint(m,lastPoint))return;}
+  if(lastPoint&&tier.length===neighbours.size){restore();if(translateToPointConstraint(m,lastPoint,preferred))return;}
  }
  // A constrained point can have only one remaining drag direction. Project the
  // cursor to that manifold rather than forcing an impossible pair of X/Y goals.
@@ -246,11 +262,23 @@ export function sketchComponent(m:Model,seeds:string[],skip?:string){
  const ids=new Set(seeds.filter(id=>id!==ORIGIN));const groups:string[][]=m.beams.map(b=>[b.a,b.b]);
  for(const d of m.dimensions??[])if(d.driving)groups.push([d.a,d.b,...(d.kind==='angle'?[d.c!,d.d!]:[])]);
  for(const c of (m.constraints??[]).filter(c=>!c.suppressed))groups.push(...[m.beams.filter(b=>b.id===c.reference||b.id===c.target).flatMap(b=>[b.a,b.b])]);
- for(const c of m.sketchConstraints??[])if(!c.suppressed&&c.id!==skip)groups.push(c.type==='coincident'||c.scope==='points'?[c.a,c.b!]:m.beams.filter(b=>b.id===c.a||b.id===c.b).flatMap(b=>[b.a,b.b]));
+ for(const c of m.sketchConstraints??[])if(!c.suppressed&&c.id!==skip)groups.push(sketchReferencePoints(m,c));
  let changed=true;while(changed){changed=false;for(const group of groups)if(group.some(id=>id!==ORIGIN&&ids.has(id)))for(const id of group)if(id!==ORIGIN&&!ids.has(id)){ids.add(id);changed=true;}}
  return ids;
 }
-function translateToPointConstraint(m:Model,c:SketchConstraint){
+function translateToPointConstraint(m:Model,c:SketchConstraint,preferred:string[]){
+ if(isMemberPointConstraint(c)){
+  const [start,end]=memberPointEnds(m,c);
+  const moveMember=c.a===ORIGIN||preferred.includes(start.id)&&preferred.includes(end.id);
+  const moving=sketchComponent(m,moveMember?[start.id,end.id]:[c.a],c.id);
+  const stationary=moveMember?[c.a]:[start.id,end.id];
+  if(stationary.some(id=>moving.has(id)))return false;
+  const point=cadPoint(m,c.a);
+  const target=c.type==='midpoint'?{x:(start.x+end.x)/2,y:(start.y+end.y)/2}:project(point,start,end);
+  const dx=point.x-target.x,dy=point.y-target.y,sign=moveMember?1:-1;
+  for(const n of m.nodes)if(moving.has(n.id)){n.x+=sign*dx;n.y+=sign*dy;}
+  return geometrySolved(m);
+ }
  if(c.type!=='coincident'&&c.scope!=='points')return false;
  const target=c.b===ORIGIN?c.a:c.b!,reference=target===c.a?c.b!:c.a,a=cadPoint(m,reference),b=cadPoint(m,target),dx=c.type==='horizontal'?0:a.x-b.x,dy=c.type==='vertical'?0:a.y-b.y,ids=sketchComponent(m,[target],c.id);
  if(ids.has(reference))return false;
@@ -295,13 +323,56 @@ export function validSketchConstraints(m:Model){
  if(!Array.isArray(m.sketchConstraints)||m.sketchConstraints.length>150)return false;
  const ids=new Set<string>();
  return m.sketchConstraints.every(c=>{if(!c||typeof c.id!=='string'||ids.has(c.id)||c.suppressed!==undefined&&typeof c.suppressed!=='boolean')return false;ids.add(c.id);
+  if(isMemberPointConstraint(c))return c.scope===undefined&&hasSketchReferences(m,c);
+  if(c.spanEnd!==undefined)return false;
   if(c.scope!==undefined&&!['points','members'].includes(c.scope)||c.scope==='points'&&!['horizontal','vertical','coincident'].includes(c.type))return false;
   if(c.type==='coincident'||c.scope==='points'&&['horizontal','vertical'].includes(c.type))return c.a!==c.b&&[c.a,c.b].every(id=>id===ORIGIN||m.nodes.some(n=>n.id===id));
   if(!['horizontal','vertical','equal','parallel','perpendicular','collinear'].includes(c.type)||!m.beams.some(b=>b.id===c.a))return false;
   return ['horizontal','vertical'].includes(c.type)||c.a!==c.b&&m.beams.some(b=>b.id===c.b);
  });
 }
+export function isMemberPointConstraint(c:SketchConstraint){
+ return c.type==='pointOnMember'||c.type==='midpoint';
+}
+export function memberPointEnds(m:Model,c:SketchConstraint){
+ const [start,end]=endpoints(m,c.b!);
+ return [start,c.spanEnd?cadPoint(m,c.spanEnd):end] as const;
+}
+export function hasSketchReferences(m:Model,c:SketchConstraint){
+ const hasPoint=(id:string|undefined)=>id===ORIGIN||m.nodes.some(n=>n.id===id);
+ if(isMemberPointConstraint(c)){
+  const member=m.beams.find(b=>b.id===c.b);
+  const end=c.spanEnd??member?.b;
+  return !!member&&hasPoint(c.a)&&end!==ORIGIN&&hasPoint(end)
+    &&member.a!==end&&c.a!==member.a&&c.a!==end;
+ }
+ if(c.type==='coincident'||c.scope==='points')return hasPoint(c.a)&&hasPoint(c.b);
+ return m.beams.some(b=>b.id===c.a)&&(!c.b||m.beams.some(b=>b.id===c.b));
+}
+function sketchReferencePoints(m:Model,c:SketchConstraint){
+ if(isMemberPointConstraint(c))return [c.a,...memberPointEnds(m,c).map(n=>n.id)];
+ if(c.type==='coincident'||c.scope==='points')return [c.a,c.b!];
+ return m.beams.filter(b=>b.id===c.a||b.id===c.b).flatMap(b=>[b.a,b.b]);
+}
+function remapSketchPoint(c:SketchConstraint,from:string,to:string){
+ if(isMemberPointConstraint(c)){
+  if(c.a===from)c.a=to;
+  if(c.spanEnd===from)c.spanEnd=to;
+ }else if(c.type==='coincident'||c.scope==='points'){
+  if(c.a===from)c.a=to;
+  if(c.b===from)c.b=to;
+ }
+}
 export function sketchResiduals(m:Model,c:SketchConstraint):number[]{
+ if(isMemberPointConstraint(c)){
+  const [start,end]=memberPointEnds(m,c),point=cadPoint(m,c.a);
+  if(Math.hypot(end.x-start.x,end.y-start.y)<=1e-6)return [NaN,NaN];
+  if(c.type==='midpoint')return [point.x-(start.x+end.x)/2,point.y-(start.y+end.y)/2];
+  const dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);
+  const px=point.x-start.x,py=point.y-start.y;
+  const along=(px*dx+py*dy)/length;
+  return [(dx*py-dy*px)/length,along-Math.max(0,Math.min(length,along))];
+ }
  if(c.type==='coincident'||c.scope==='points'){const a=cadPoint(m,c.a),b=cadPoint(m,c.b!);return c.type==='horizontal'?[b.y-a.y]:c.type==='vertical'?[b.x-a.x]:[b.x-a.x,b.y-a.y];}
  const [a,b]=endpoints(m,c.a),dx=b.x-a.x,dy=b.y-a.y,L=Math.max(1e-8,Math.hypot(dx,dy));
  if(c.type==='horizontal')return [dy];if(c.type==='vertical')return [dx];
@@ -330,10 +401,11 @@ export function mergePoints(m:Model,keep:string,remove:string){
  for(const v of next.beams){if(v.a===remove)v.a=keep;if(v.b===remove)v.b=keep;}
  for(const d of next.dimensions??[])for(const key of ['a','b','c','d'] as const)if(d[key]===remove)d[key]=keep;
  next.dimensions=next.dimensions?.filter(d=>d.a!==d.b&&(d.kind!=='angle'||d.c!==d.d));
- for(const c of next.sketchConstraints)if(c.type==='coincident'||c.scope==='points'){if(c.a===remove)c.a=keep;if(c.b===remove)c.b=keep;}
+ for(const c of next.sketchConstraints)remapSketchPoint(c,remove,keep);
  next.sketchConstraints=next.sketchConstraints.filter(c=>!(c.type==='coincident'||c.scope==='points')||c.a!==c.b);
  if(next.dimensionAnchor===remove)next.dimensionAnchor=keep;
  next.nodes=next.nodes.filter(n=>n.id!==remove);
+ next.sketchConstraints=next.sketchConstraints.filter(c=>hasSketchReferences(next,c));
  if(!validModel(next))throw Error('Over-constrained connection: the existing dimensions prevent these points from joining.');
  Object.assign(m,next);
 }
@@ -394,7 +466,7 @@ export function dimensionConflict(m:Model,dimensionId:string){
  }
  if(added)continue;
 
- const points=(id:string)=>{const dim=m.dimensions?.find(d=>d.id===id);if(dim)return [dim.a,dim.b,...(dim.kind==='angle'?[dim.c!,dim.d!]:[])];const c=m.constraints?.find(c=>c.id===id);if(c)return m.beams.filter(b=>b.id===c.reference||b.id===c.target).flatMap(b=>[b.a,b.b]);const s=m.sketchConstraints?.find(c=>c.id===id);return s?(s.type==='coincident'||s.scope==='points'?[s.a,s.b!]:m.beams.filter(b=>b.id===s.a||b.id===s.b).flatMap(b=>[b.a,b.b])):[];};
+ const points=(id:string)=>{const dim=m.dimensions?.find(d=>d.id===id);if(dim)return [dim.a,dim.b,...(dim.kind==='angle'?[dim.c!,dim.d!]:[])];const c=m.constraints?.find(c=>c.id===id);if(c)return m.beams.filter(b=>b.id===c.reference||b.id===c.target).flatMap(b=>[b.a,b.b]);const s=m.sketchConstraints?.find(c=>c.id===id);return s?sketchReferencePoints(m,s):[];};
  for(const t of cadTerms(copy)){if(Math.abs(t.v)<1e-7)continue;const p=points(t.id).filter(id=>id!==ORIGIN),coordinates=p.flatMap(id=>[index.get(id)!,index.get(id)!+1]);if(coordinates.length&&coordinates.every(i=>fixed.has(i))){const ids=new Set([t.id]);for(const i of coordinates)for(const id of fixed.get(i)!.ids)ids.add(id);return [...ids];}}
  return [];
  }

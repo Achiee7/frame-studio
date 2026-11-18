@@ -1,5 +1,5 @@
-import {cadPoint,dimensionValue,dimensionSense,uid,enforceConstraints,sketchMobility} from './model';
-import type {Model,CadDimension,SketchConstraint} from './model';
+import {cadPoint,dimensionValue,dimensionSense,uid,enforceConstraints,sketchMobility,hasSketchReferences,memberPointEnds,isMemberPointConstraint,ORIGIN} from './model.ts';
+import type {Model,CadDimension,SketchConstraint} from './model.ts';
 export type Point={x:number;y:number};
 export type DimensionPick={points:string[];members:string[]};
 export const emptyPick=():DimensionPick=>({points:[],members:[]});
@@ -23,18 +23,40 @@ export function dimensionCandidate(m:Model,pick:DimensionPick,screen:(p:Point)=>
  if(d.b==='@origin')[d.a,d.b]=[d.b,d.a];d.value=dimensionValue(m,d);d.sense=dimensionSense(m,d);d.offset=placementOffset(d,m,screen,mouse);return d;
 }
 export function seedSketch(m:Model,c:SketchConstraint){
- if(c.type==='coincident')return;if(c.scope==='points'){const a=cadPoint(m,c.a),b=cadPoint(m,c.b!);if(b.id==='@origin')return;if(c.type==='horizontal')b.y=a.y;else b.x=a.x;return;}const b=m.beams.find(b=>b.id===c.a)!,a=cadPoint(m,b.a),z=cadPoint(m,b.b),L=Math.hypot(z.x-a.x,z.y-a.y);
+ if(c.type==='coincident'||isMemberPointConstraint(c))return;if(c.scope==='points'){const a=cadPoint(m,c.a),b=cadPoint(m,c.b!);if(b.id==='@origin')return;if(c.type==='horizontal')b.y=a.y;else b.x=a.x;return;}const b=m.beams.find(b=>b.id===c.a)!,a=cadPoint(m,b.a),z=cadPoint(m,b.b),L=Math.hypot(z.x-a.x,z.y-a.y);
  if(c.type==='horizontal'){z.x=a.x+(z.x<a.x?-1:1)*L;z.y=a.y;return;}if(c.type==='vertical'){z.y=a.y+(z.y<a.y?-1:1)*L;z.x=a.x;return;}
  const t=m.beams.find(b=>b.id===c.b)!,p=cadPoint(m,t.a),q=cadPoint(m,t.b),shared=[p,q].find(n=>[a.id,z.id].includes(n.id)),anchor=shared??p,moving=anchor===p?q:p,T=Math.hypot(q.x-p.x,q.y-p.y),u=(z.x-a.x)/L,v=(z.y-a.y)/L;
  if(c.type==='equal'){const dx=moving.x-anchor.x,dy=moving.y-anchor.y;moving.x=anchor.x+dx/T*L;moving.y=anchor.y+dy/T*L;return;}
  let dx=c.type==='perpendicular'?-v:u,dy=c.type==='perpendicular'?u:v;if((moving.x-anchor.x)*dx+(moving.y-anchor.y)*dy<0){dx=-dx;dy=-dy;}
  if(c.type==='collinear'&&!shared){const k=(anchor.x-a.x)*u+(anchor.y-a.y)*v;anchor.x=a.x+k*u;anchor.y=a.y+k*v;}moving.x=anchor.x+dx*T;moving.y=anchor.y+dy*T;
 }
-export function addSketchConstraint(m:Model,type:SketchConstraint['type'],a:string,b?:string,scope?:'points'|'members'){
- if((m.sketchConstraints??[]).some(c=>!c.suppressed&&c.type===type&&(c.scope??'members')===(scope??'members')&&((c.a===a&&c.b===b)||(c.a===b&&c.b===a))))throw Error('Over-constrained sketch: this constraint already exists.');
- const before=structuredClone(m),existing=(m.sketchConstraints??[]).find(c=>c.suppressed&&c.type===type&&(c.scope??'members')===(scope??'members')&&((c.a===a&&c.b===b)||(c.a===b&&c.b===a))),c:SketchConstraint={id:existing?.id??uid(),type,a,b,...(scope?{scope}:{}),...(existing?{suppressed:false}:{})};if(scope!=='points')seedSketch(m,c);m.sketchConstraints=existing?(m.sketchConstraints??[]).map(x=>x.id===existing.id?c:x):[...(m.sketchConstraints??[]),c];
- const preferred=scope==='points'?[b=== '@origin'?a:b!]:[m.beams.find(x=>x.id===(b??a))!.b];
- try{enforceConstraints(m,undefined,{preferredNodes:preferred});const without=structuredClone(m);without.sketchConstraints=without.sketchConstraints?.filter(x=>x.id!==c.id);if(!existing&&sketchMobility(m).rank===sketchMobility(without).rank)throw Error('Over-constrained sketch: the existing relationships already define this constraint.');}
- catch(error){Object.assign(m,before);throw error;}
+export function addSketchConstraint(m:Model,type:SketchConstraint['type'],a:string,b?:string,scope?:'points'|'members',moveMember=false){
+ const proposed:SketchConstraint={id:uid(),type,a,b,...(scope?{scope}:{})};
+ const mixed=isMemberPointConstraint(proposed);
+ const matches=(c:SketchConstraint)=>c.type===type&&(c.scope??'members')===(scope??'members')
+  &&(c.a===a&&c.b===b||!mixed&&c.a===b&&c.b===a);
+ if((m.sketchConstraints??[]).some(c=>!c.suppressed&&matches(c))){
+  throw Error('Over-constrained sketch: this constraint already exists.');
+ }
+ const before=structuredClone(m);
+ const existing=(m.sketchConstraints??[]).find(c=>c.suppressed&&matches(c));
+ const c:SketchConstraint=existing?{...existing,...proposed,id:existing.id,suppressed:false}:proposed;
+ if(!hasSketchReferences(m,c))throw Error('Choose a point separate from the member endpoints.');
+ if(scope!=='points')seedSketch(m,c);
+ m.sketchConstraints=existing?(m.sketchConstraints??[]).map(x=>x.id===existing.id?c:x):[...(m.sketchConstraints??[]),c];
+ const preferred=mixed
+  ? (moveMember||a===ORIGIN?memberPointEnds(m,c).map(n=>n.id):[a])
+  : scope==='points'?[b===ORIGIN?a:b!]:[m.beams.find(x=>x.id===(b??a))!.b];
+ try{
+  enforceConstraints(m,undefined,{preferredNodes:preferred});
+  const without=structuredClone(m);
+  without.sketchConstraints=without.sketchConstraints?.filter(x=>x.id!==c.id);
+  if(!existing&&sketchMobility(m).rank===sketchMobility(without).rank){
+   throw Error('Over-constrained sketch: the existing relationships already define this constraint.');
+  }
+ }catch(error){
+  Object.assign(m,before);
+  throw error;
+ }
  return c;
 }
