@@ -11,7 +11,7 @@ export type MassProperties = {material?:string;reference?:string;mass?:number;de
 export type Beam = {material?:MaterialSpec;section?:SectionSpec;massProperties?:MassProperties;id:string;a:string;b:string;family:string;kind:'beam'|'strut';profile:string;E:number;A:number;I:number;releaseA?:boolean;releaseB?:boolean};
 export type Load = {normal?:1|-1;canReverse?:boolean;attachment?:'start'|'end';position?:{from:'start'|'end';distance:number;fixed?:boolean};id:string;beam:string;t:number;type:'force'|'moment'|'distributed';fx:number;fy:number;m:number;case:string};
 export type GeometryConstraint = {suppressed?:boolean;id:string;type:'collinear'|'rightAngle';reference:string;target:string};
-export type CadDimension = {id:string;kind:'length'|'aligned'|'horizontal'|'vertical'|'direction'|'angle';a:string;b:string;c?:string;d?:string;value:number;driving:boolean;sense?:1|-1;offset?:number};
+export type CadDimension = {id:string;kind:'length'|'aligned'|'horizontal'|'vertical'|'direction'|'angle'|'perpendicular';a:string;b:string;c?:string;d?:string;value:number;driving:boolean;sense?:1|-1;offset?:number};
 export type SketchConstraint={suppressed?:boolean;scope?:'points'|'members';id:string;type:'horizontal'|'vertical'|'equal'|'parallel'|'perpendicular'|'collinear'|'coincident'|'pointOnMember'|'midpoint';a:string;b?:string;spanEnd?:string};
 export const ORIGIN='@origin';
 export function cadPoint(m:Model,id:string){return id===ORIGIN?{id:ORIGIN,x:0,y:0}:m.nodes.find(n=>n.id===id)!;}
@@ -102,9 +102,31 @@ export function joinContinuous(m:Model,first:string,second:string){
 
 const radians=Math.PI/180;
 const wrapAngle=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a));
+export function dimensionPoints(d:CadDimension){
+ const points=[d.a,d.b];
+ if(d.kind==='angle'||d.kind==='perpendicular')points.push(d.c!);
+ if(d.kind==='angle')points.push(d.d!);
+ return points;
+}
+
+function dimensionTarget(d:CadDimension){
+ return d.kind==='perpendicular'?d.c!:d.kind==='angle'?d.d!:d.b;
+}
+
+type Position={x:number;y:number};
+export function lineProjection(a:Position,b:Position,point:Position){
+ const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+ const tangent={x:dx/length,y:dy/length},normal={x:-tangent.y,y:tangent.x};
+ const x=point.x-a.x,y=point.y-a.y;
+ const along=x*tangent.x+y*tangent.y;
+ return {tangent,normal,along,length,distance:x*normal.x+y*normal.y,
+  foot:{x:a.x+along*tangent.x,y:a.y+along*tangent.y}};
+}
+
 export function dimensionValue(m:Model,d:CadDimension){
  const a=cadPoint(m,d.a!),b=cadPoint(m,d.b!);
  const dx=b.x-a.x,dy=b.y-a.y;
+ if(d.kind==='perpendicular')return Math.abs(lineProjection(a,b,cadPoint(m,d.c!)).distance);
  if(d.kind==='horizontal')return Math.abs(dx);
  if(d.kind==='vertical')return Math.abs(dy);
  if(d.kind==='direction')return ((Math.atan2(dy,dx)/radians)%360+360)%360;
@@ -113,12 +135,13 @@ export function dimensionValue(m:Model,d:CadDimension){
 }
 export function dimensionSense(m:Model,d:CadDimension):1|-1{
  const a=cadPoint(m,d.a!),b=cadPoint(m,d.b!);
+ if(d.kind==='perpendicular')return lineProjection(a,b,cadPoint(m,d.c!)).distance<0?-1:1;
  if(d.kind==='horizontal')return b.x<a.x?-1:1;
  if(d.kind==='vertical')return b.y<a.y?-1:1;
  if(d.kind==='angle'){const c=cadPoint(m,d.c!),p=cadPoint(m,d.d!);return wrapAngle(Math.atan2(p.y-c.y,p.x-c.x)-Math.atan2(b.y-a.y,b.x-a.x))<0?-1:1;}
  return 1;
 }
-export function dimensionsSatisfied(m:Model){return (m.dimensions??[]).every(d=>{if(!d.driving)return true;const a=cadPoint(m,d.a!),b=cadPoint(m,d.b!);if(d.kind==='horizontal')return Math.abs(b.x-a.x-(d.sense??1)*d.value)<1e-6;if(d.kind==='vertical')return Math.abs(b.y-a.y-(d.sense??1)*d.value)<1e-6;if(d.kind==='angle'){const c=cadPoint(m,d.c!),p=cadPoint(m,d.d!);return Math.abs(wrapAngle(Math.atan2(p.y-c.y,p.x-c.x)-Math.atan2(b.y-a.y,b.x-a.x)-(d.sense??1)*d.value*radians))<1e-7;}const v=dimensionValue(m,d);return d.kind==='direction'?Math.abs(wrapAngle((v-d.value)*radians))<1e-7:Math.abs(v-d.value)<1e-6;});}
+export function dimensionsSatisfied(m:Model){return (m.dimensions??[]).every(d=>{if(!d.driving)return true;const a=cadPoint(m,d.a!),b=cadPoint(m,d.b!);if(d.kind==='perpendicular')return Math.abs(lineProjection(a,b,cadPoint(m,d.c!)).distance-(d.sense??1)*d.value)<1e-6;if(d.kind==='horizontal')return Math.abs(b.x-a.x-(d.sense??1)*d.value)<1e-6;if(d.kind==='vertical')return Math.abs(b.y-a.y-(d.sense??1)*d.value)<1e-6;if(d.kind==='angle'){const c=cadPoint(m,d.c!),p=cadPoint(m,d.d!);return Math.abs(wrapAngle(Math.atan2(p.y-c.y,p.x-c.x)-Math.atan2(b.y-a.y,b.x-a.x)-(d.sense??1)*d.value*radians))<1e-7;}const v=dimensionValue(m,d);return d.kind==='direction'?Math.abs(wrapAngle((v-d.value)*radians))<1e-7:Math.abs(v-d.value)<1e-6;});}
 export function validDimensions(m:Model){
  if(m.dimensionAnchor!==undefined&&m.dimensionAnchor!==ORIGIN&&!m.nodes.some(n=>n.id===m.dimensionAnchor))return false;
  if(m.dimensionUnits!==undefined&&!['m','mm'].includes(m.dimensionUnits))return false;
@@ -126,14 +149,16 @@ export function validDimensions(m:Model){
  if(!Array.isArray(m.dimensions)||m.dimensions.length>120)return false;
  const ids=new Set<string>();
  for(const d of m.dimensions){
-  if(!d||typeof d.id!=='string'||ids.has(d.id)||!['length','aligned','horizontal','vertical','direction','angle'].includes(d.kind)||typeof d.driving!=='boolean'||typeof d.value!=='number'||!Number.isFinite(d.value)||Math.abs(d.value)>1e8)return false;
+  if(!d||typeof d.id!=='string'||ids.has(d.id)||!['length','aligned','horizontal','vertical','direction','angle','perpendicular'].includes(d.kind)||typeof d.driving!=='boolean'||typeof d.value!=='number'||!Number.isFinite(d.value)||Math.abs(d.value)>1e8)return false;
   ids.add(d.id);
   if(d.a===d.b||![d.a,d.b].every(id=>id===ORIGIN||m.nodes.some(n=>n.id===id)))return false;
-  if(d.kind==='angle'&&(d.c===d.d||![d.c,d.d].every(id=>id===ORIGIN||m.nodes.some(n=>n.id===id))))return false;
-  if(['direction','angle'].includes(d.kind)){const a=cadPoint(m,d.a!),b=cadPoint(m,d.b!);if(Math.hypot(b.x-a.x,b.y-a.y)<1e-6)return false;if(d.kind==='angle'){const c=cadPoint(m,d.c!),p=cadPoint(m,d.d!);if(Math.hypot(p.x-c.x,p.y-c.y)<1e-6)return false;}}
+  if(!dimensionPoints(d).every(id=>id===ORIGIN||m.nodes.some(n=>n.id===id)))return false;
+  if(d.kind==='angle'&&d.c===d.d)return false;
+  if(d.kind==='perpendicular'&&(d.c===d.a||d.c===d.b))return false;
+  if(['direction','angle','perpendicular'].includes(d.kind)){const a=cadPoint(m,d.a!),b=cadPoint(m,d.b!);if(Math.hypot(b.x-a.x,b.y-a.y)<1e-6)return false;if(d.kind==='angle'){const c=cadPoint(m,d.c!),p=cadPoint(m,d.d!);if(Math.hypot(p.x-c.x,p.y-c.y)<1e-6)return false;}}
   if((d.kind==='angle'&&(d.value<0||d.value>180))||(d.kind==='direction'&&(d.value<0||d.value>=360)))return false;
   if(['length','aligned'].includes(d.kind)&&d.driving&&d.value<1e-5)return false;
-  if(['horizontal','vertical'].includes(d.kind)&&d.value<0)return false;
+  if(['horizontal','vertical','perpendicular'].includes(d.kind)&&d.value<0)return false;
   if(d.sense!==undefined&&d.sense!==1&&d.sense!==-1)return false;
   if(d.offset!==undefined&&(!Number.isFinite(d.offset)||Math.abs(d.offset)>250))return false;
  }
@@ -142,11 +167,15 @@ export function validDimensions(m:Model){
 // Seed the requested edit with the first point fixed, so unconstrained cases
 // behave like a conventional CAD dimension. The coupled solve handles the rest.
 export function seedDimension(m:Model,d:CadDimension){
- if(!d.driving||d.b===ORIGIN||d.d===ORIGIN)return;
+ if(!d.driving||d.b===ORIGIN||d.d===ORIGIN||d.kind==='perpendicular'&&d.c===ORIGIN)return;
  const anchor=m.nodes.find(n=>n.id===m.dimensionAnchor),anchorPosition=anchor?{x:anchor.x,y:anchor.y}:undefined;
  const a=cadPoint(m,d.a!),b=cadPoint(m,d.b!);
  const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1;
- if(d.kind==='length'||d.kind==='aligned'){b.x=a.x+(Math.hypot(dx,dy)<1e-8?1:dx/L)*d.value;b.y=a.y+dy/L*d.value;}
+ if(d.kind==='perpendicular'){
+  const point=cadPoint(m,d.c!),{foot,normal}=lineProjection(a,b,point);
+  point.x=foot.x+normal.x*(d.sense??1)*d.value;
+  point.y=foot.y+normal.y*(d.sense??1)*d.value;
+ }else if(d.kind==='length'||d.kind==='aligned'){b.x=a.x+(Math.hypot(dx,dy)<1e-8?1:dx/L)*d.value;b.y=a.y+dy/L*d.value;}
  else if(d.kind==='horizontal')b.x=a.x+(d.sense??1)*d.value;
  else if(d.kind==='vertical')b.y=a.y+(d.sense??1)*d.value;
  else if(d.kind==='direction'){b.x=a.x+L*Math.cos(d.value*radians);b.y=a.y+L*Math.sin(d.value*radians);}
@@ -183,7 +212,8 @@ export function cadTerms(m:Model,rightSenses?:Map<string,number>):CadTerm[]{
   else {const sign=rightSenses?.get(c.id)??(dx*(q.y-p.y)-dy*(q.x-p.x)<0?-1:1);out.push({v:wrapAngle(Math.atan2(q.y-p.y,q.x-p.x)-Math.atan2(dy,dx)-sign*Math.PI/2),period:2*Math.PI,id:c.id});}
  }
  for(const d of (m.dimensions??[]).filter(d=>d.driving)){const a=cadPoint(m,d.a),b=cadPoint(m,d.b),dx=b.x-a.x,dy=b.y-a.y;
-  if(d.kind==='horizontal')out.push({v:dx-(d.sense??1)*d.value,id:d.id});
+  if(d.kind==='perpendicular')out.push({v:lineProjection(a,b,cadPoint(m,d.c!)).distance-(d.sense??1)*d.value,id:d.id});
+  else if(d.kind==='horizontal')out.push({v:dx-(d.sense??1)*d.value,id:d.id});
   else if(d.kind==='vertical')out.push({v:dy-(d.sense??1)*d.value,id:d.id});
   else if(d.kind==='direction')out.push({v:wrapAngle(Math.atan2(dy,dx)-d.value*radians),period:2*Math.PI,id:d.id});
   else if(d.kind==='angle'){const p=cadPoint(m,d.c!),q=cadPoint(m,d.d!);out.push({v:wrapAngle(Math.atan2(q.y-p.y,q.x-p.x)-Math.atan2(dy,dx)-(d.sense??1)*d.value*radians),period:2*Math.PI,id:d.id});}
@@ -207,7 +237,7 @@ function solveCadGeometry(m:Model,editedNode?:string,options:SketchSolveOptions=
  if(geometrySolved(m))return;
  const original=m.nodes.map(n=>({x:n.x,y:n.y})),restore=()=>m.nodes.forEach((n,i)=>Object.assign(n,original[i]));
  const lastPoint=[...(m.sketchConstraints??[])].reverse().find(c=>!c.suppressed&&(c.type==='coincident'||c.scope==='points'||isMemberPointConstraint(c))&&sketchResiduals(m,c).some(v=>Math.abs(v)>1e-8));
- const lastDimension=[...(m.dimensions??[])].reverse().find(d=>d.driving),target=lastDimension?.kind==='angle'?lastDimension.d:lastDimension?.b;
+ const lastDimension=[...(m.dimensions??[])].reverse().find(d=>d.driving),target=lastDimension?dimensionTarget(lastDimension):undefined;
  let preferred=options.preferredNodes?.length?options.preferredNodes:editedNode?[editedNode]:[];
  if(!preferred.length&&lastPoint){
   if(isMemberPointConstraint(lastPoint)){
@@ -260,7 +290,7 @@ function projectGeometry(m:Model,movable:Set<string>,hold?:string,preferred?:str
 }
 export function sketchComponent(m:Model,seeds:string[],skip?:string){
  const ids=new Set(seeds.filter(id=>id!==ORIGIN));const groups:string[][]=m.beams.map(b=>[b.a,b.b]);
- for(const d of m.dimensions??[])if(d.driving)groups.push([d.a,d.b,...(d.kind==='angle'?[d.c!,d.d!]:[])]);
+ for(const d of m.dimensions??[])if(d.driving)groups.push(dimensionPoints(d));
  for(const c of (m.constraints??[]).filter(c=>!c.suppressed))groups.push(...[m.beams.filter(b=>b.id===c.reference||b.id===c.target).flatMap(b=>[b.a,b.b])]);
  for(const c of m.sketchConstraints??[])if(!c.suppressed&&c.id!==skip)groups.push(sketchReferencePoints(m,c));
  let changed=true;while(changed){changed=false;for(const group of groups)if(group.some(id=>id!==ORIGIN&&ids.has(id)))for(const id of group)if(id!==ORIGIN&&!ids.has(id)){ids.add(id);changed=true;}}
@@ -400,7 +430,7 @@ export function mergePoints(m:Model,keep:string,remove:string){
  if(a.support==='free'&&b.support!=='free'){a.support=b.support;a.spring=b.spring;a.settlement=b.settlement;}
  for(const v of next.beams){if(v.a===remove)v.a=keep;if(v.b===remove)v.b=keep;}
  for(const d of next.dimensions??[])for(const key of ['a','b','c','d'] as const)if(d[key]===remove)d[key]=keep;
- next.dimensions=next.dimensions?.filter(d=>d.a!==d.b&&(d.kind!=='angle'||d.c!==d.d));
+ next.dimensions=next.dimensions?.filter(d=>d.a!==d.b&&(d.kind!=='angle'||d.c!==d.d)&&(d.kind!=='perpendicular'||d.c!==d.a&&d.c!==d.b));
  for(const c of next.sketchConstraints)remapSketchPoint(c,remove,keep);
  next.sketchConstraints=next.sketchConstraints.filter(c=>!(c.type==='coincident'||c.scope==='points')||c.a!==c.b);
  if(next.dimensionAnchor===remove)next.dimensionAnchor=keep;
@@ -414,15 +444,16 @@ export type DimensionApplication={model:Model;reason:null|'redundant'|'conflict'
 export function applyCadDimension(m:Model,dimension:CadDimension):DimensionApplication{
  m=withLoadPositions(structuredClone(m));
  const d=structuredClone(dimension),angular=['angle','direction'].includes(d.kind);
- if(!Number.isFinite(d.value)||Math.abs(d.value)>1e8||angular&&(d.value<0||d.value>(d.kind==='angle'?180:359.99999999))||['length','aligned'].includes(d.kind)&&d.value<1e-5||['horizontal','vertical'].includes(d.kind)&&d.value<0)throw Error('Enter a valid positive length or an angle within its allowed range.');
+ if(!Number.isFinite(d.value)||Math.abs(d.value)>1e8||angular&&(d.value<0||d.value>(d.kind==='angle'?180:359.99999999))||['length','aligned'].includes(d.kind)&&d.value<1e-5||['horizontal','vertical','perpendicular'].includes(d.kind)&&d.value<0)throw Error('Enter a valid positive length or an angle within its allowed range.');
  const put=(data:Model,value:CadDimension)=>{const index=data.dimensions?.findIndex(x=>x.id===value.id)??-1;if(index>=0)data.dimensions![index]=value;else data.dimensions=[...(data.dimensions??[]),value];};
  if(!m.dimensions?.some(x=>x.id===d.id)&&(m.dimensions?.length??0)>=120)throw Error('Use at most 120 dimensions per sketch.');
  const reference=()=>{const data=structuredClone(m),ref={...d,driving:false,value:dimensionValue(m,d)};put(data,ref);if(!validModel(data))throw Error('This dimension refers to invalid geometry.');return data;};
  if(!d.driving)return {model:reference(),reason:null,applied:true};
  let next=structuredClone(m);put(next,d);const proof=dimensionConflict(next,d.id);
  if(proof.length)return {model:reference(),reason:'conflict',applied:true,relationIds:proof,message:`This value conflicts with ${relationNames(next,proof.filter(id=>id!==d.id).sort((a,b)=>Number(!next.constraints?.some(c=>c.id===a))-Number(!next.constraints?.some(c=>c.id===b)))).join(', ')}. The dimension was made driven; the previous geometry was kept.`};
- const preferred=[d.kind==='angle'?d.d!:d.b].filter(id=>id!==ORIGIN);let solved=false;
- try{if(![d.a,d.b,d.c,d.d].includes(ORIGIN))seedDimension(next,d);enforceGeometry(next,undefined,{preferredNodes:preferred});solved=true;}catch{}
+ const preferred=d.kind==='perpendicular'&&d.c===ORIGIN?[d.a,d.b]:[dimensionTarget(d)].filter(id=>id!==ORIGIN);
+ let solved=false;
+ try{if(d.kind==='perpendicular'||!dimensionPoints(d).includes(ORIGIN))seedDimension(next,d);enforceGeometry(next,undefined,{preferredNodes:preferred});solved=true;}catch{}
  if(!solved){
   // Follow the feasible branch in small steps before treating a failed direct
   // solve as unresolved. Failure to converge never proves over-constraint.
@@ -442,6 +473,10 @@ export function relationNames(m:Model,ids:string[]){return ids.map(id=>{const d=
 export function dimensionConflict(m:Model,dimensionId:string){
  const d=m.dimensions?.find(d=>d.id===dimensionId)!;
  if(d){for(const other of m.dimensions??[]){if(!other.driving||other.id===d.id)continue;const metric=(x:CadDimension)=>['length','aligned'].includes(x.kind)?'distance':x.kind;
+  if(d.kind==='perpendicular'&&other.kind==='perpendicular'&&d.c===other.c){
+   const orientation=d.a===other.a&&d.b===other.b?1:d.a===other.b&&d.b===other.a?-1:0;
+   if(orientation&&Math.abs((d.sense??1)*d.value-orientation*(other.sense??1)*other.value)>1e-7)return [other.id,d.id];
+  }
   if(metric(d)===metric(other)&&[d.a,d.b].sort().join('|')===[other.a,other.b].sort().join('|')&&metric(d)==='distance'&&Math.abs(d.value-other.value)>1e-7)return [other.id,d.id];}}
  const width=m.nodes.length*2,index=new Map(m.nodes.map((n,i)=>[n.id,i*2]));type Row={v:number[];rhs:number;ids:Set<string>;pivot:number};const rows:Row[]=[];
  function row(a:string,b:string,axis:'x'|'y',rhs:number,id:string,multiplier=1,existing?:Row){const r=existing??{v:Array(width).fill(0),rhs,ids:new Set([id]),pivot:-1},offset=axis==='x'?0:1;if(a!==ORIGIN)r.v[index.get(a)!+offset]-=multiplier;if(b!==ORIGIN)r.v[index.get(b)!+offset]+=multiplier;if(!existing)rows.push(r);return r;}
@@ -466,7 +501,7 @@ export function dimensionConflict(m:Model,dimensionId:string){
  }
  if(added)continue;
 
- const points=(id:string)=>{const dim=m.dimensions?.find(d=>d.id===id);if(dim)return [dim.a,dim.b,...(dim.kind==='angle'?[dim.c!,dim.d!]:[])];const c=m.constraints?.find(c=>c.id===id);if(c)return m.beams.filter(b=>b.id===c.reference||b.id===c.target).flatMap(b=>[b.a,b.b]);const s=m.sketchConstraints?.find(c=>c.id===id);return s?sketchReferencePoints(m,s):[];};
+ const points=(id:string)=>{const dim=m.dimensions?.find(d=>d.id===id);if(dim)return dimensionPoints(dim);const c=m.constraints?.find(c=>c.id===id);if(c)return m.beams.filter(b=>b.id===c.reference||b.id===c.target).flatMap(b=>[b.a,b.b]);const s=m.sketchConstraints?.find(c=>c.id===id);return s?sketchReferencePoints(m,s):[];};
  for(const t of cadTerms(copy)){if(Math.abs(t.v)<1e-7)continue;const p=points(t.id).filter(id=>id!==ORIGIN),coordinates=p.flatMap(id=>[index.get(id)!,index.get(id)!+1]);if(coordinates.length&&coordinates.every(i=>fixed.has(i))){const ids=new Set([t.id]);for(const i of coordinates)for(const id of fixed.get(i)!.ids)ids.add(id);return [...ids];}}
  return [];
  }
