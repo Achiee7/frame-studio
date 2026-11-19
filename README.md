@@ -10,6 +10,16 @@ Projects, recovery drafts and named beam presets stay in your browser. There is 
 
 ![Frame Studio reaction results](docs/screenshot.jpg)
 
+## Draw a 3D wireframe
+
+Open **3D-model** and choose **Beam** or **Strut**. Pick two endpoints on the grid, or enter exact X, Y and Z coordinates in the project length unit. Keep placing points to draw a chain. Press **Enter** to finish. For a second level, select the XY workplane and set its Z offset to the level height. The XZ and YZ planes let you draw elevations.
+
+Drag in **Orbit** to rotate, use **Pan** to move the view, and scroll to zoom. The view menu switches between isometric, top, front and right. **Fit** brings the whole frame into view.
+
+Use **Joint** to split a member or connect members at a shared 3D intersection. When geometry overlaps in a view, the picker shows the candidate coordinates. Select a joint to edit its position, connection and support, or select a member to inspect its true length and endpoints.
+
+Each project saves both drawings. The **Results** tab calculates the 2D model. The 3D tab is for geometry and connectivity.
+
 ## Sections and easier modelling
 
 - Browse HEA, HEB, IPE and hollow sections in a category tree with profile previews, dimensioned drawings and property details.
