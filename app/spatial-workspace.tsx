@@ -1,12 +1,14 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import type {FormEvent} from 'react';
-import {Box, Check, ChevronRight, CircleDot, MoveUpRight, Ruler, Trash2, X} from 'lucide-react';
+import {Box, Check, ChevronRight, CircleDot, LockKeyhole, LockKeyholeOpen, MoveUpRight, Ruler, Trash2, X} from 'lucide-react';
 import {useUnits} from './unit-context';
 import {inputNumber, lengthUnits, parseNumber, settingNumber} from './units';
 import NumberInput from './number-input';
 import {supportTypes} from './support-symbol';
 import {SpatialCanvas} from './spatial-canvas';
-import type {SpatialPlane, SpatialSelection, SpatialTool} from './spatial-canvas';
+import {spatialSketchMobility} from './spatial-mobility';
+import {moveConstrainedSpatialNode,translateSpatialMember,setSpatialPositionLock,spatialPositionLocked} from './spatial-sketch';
+import type {SpatialDrag, SpatialPlane, SpatialSelection, SpatialTool} from './spatial-canvas';
 import {addSpatialMember, ensureSpatialNode, insertSpatialJoint, placeSpatialJoint, removeSpatialMember, removeSpatialNode, updateSpatialMember, updateSpatialNode} from './spatial-model';
 import type {SpatialModel, Vec3} from './spatial-model';
 import type {Joint, Support} from './model';
@@ -31,28 +33,35 @@ const normal = {XY:'z', XZ:'y', YZ:'x'} as const;
 const origin = {x:0, y:0, z:0};
 const jointNames:Record<Joint,string> = {rigid:'Rigid', pin:'Pin', hinge:'Internal hinge'};
 
-function Coordinates({initial, action, onApply}:{
+function Coordinates({initial, action, onApply, onLock, onUnlock}:{
   initial:Vec3; action:string; onApply:(point:Vec3)=>void;
+  onLock?:(point:Vec3)=>void; onUnlock?:()=>void;
 }) {
   const units = useUnits();
   const factor = lengthUnits[units.length];
   const [values, setValues] = useState(() => axes.map(axis => inputNumber(initial[axis] / factor)));
   const [attempted, setAttempted] = useState(false);
-  const numbers = values.map(value => parseNumber(value) * factor);
+  const numbers = values.map((value,i) => value===inputNumber(initial[axes[i]]/factor)?initial[axes[i]]:parseNumber(value)*factor);
   function submit(event:FormEvent) {
     event.preventDefault();
     setAttempted(true);
-    if (numbers.every(Number.isFinite)) onApply({x:numbers[0], y:numbers[1], z:numbers[2]});
+    if(onUnlock||!numbers.every(Number.isFinite))return;
+    const submitter=(event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement|null;
+    const applyPosition=submitter?.value==='lock'&&onLock?onLock:onApply;
+    applyPosition({x:numbers[0], y:numbers[1], z:numbers[2]});
   }
   return <form className="sp-coordinates" onSubmit={submit}>
     <div className="sp-xyz">{axes.map((axis, index) => <label key={axis}>
       <span className={'sp-axis-' + axis}>{axis.toUpperCase()}</span>
       <input type="text" inputMode="decimal" autoComplete="off" aria-label={axis.toUpperCase() + ' coordinate in ' + units.length}
-        value={values[index]} aria-invalid={attempted && !Number.isFinite(numbers[index])}
+        value={values[index]} readOnly={!!onUnlock} aria-invalid={attempted && !Number.isFinite(numbers[index])}
         onChange={e => setValues(values.map((old, i) => i === index ? e.target.value : old))}/>
     </label>)}</div>
     {attempted && numbers.some(n => !Number.isFinite(n)) && <small role="alert">Enter a number for each coordinate.</small>}
-    <button className="sp-action" type="submit"><Check size={14}/>{action}</button>
+    {onUnlock?<button className="sp-action" type="button" onClick={onUnlock}><LockKeyholeOpen size={14}/>Unlock position</button>:
+      <div className="sp-coordinate-actions"><button className="sp-action" type="submit"><Check size={14}/>{action}</button>
+        {onLock&&<button className="sp-action sp-lock" type="submit" value="lock" title="Apply the entered coordinates and lock this joint in the sketch"><LockKeyhole size={14}/>Lock position</button>}
+      </div>}
   </form>;
 }
 
@@ -60,7 +69,13 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   const units = useUnits(), factor = lengthUnits[units.length];
   const [tool, setTool] = useState<SpatialTool>(() => model.nodes.length ? 'select' : 'beam');
   const [selection, setSelection] = useState<SpatialSelection>(null);
+  const committed=useRef(model);
+  committed.current=model;
+  const [preview,setPreview]=useState<{base:SpatialModel;next:SpatialModel}|null>(null);
+  const visible=preview?.base===model?preview.next:model;
+  const mobility=useMemo(()=>spatialSketchMobility(visible),[visible]);
   const [anchor, setAnchor] = useState<{point:Vec3; model:SpatialModel}|null>(null);
+  const [rejectedPick,setRejectedPick]=useState<SpatialSelection>(null);
   const start = anchor?.model === model ? anchor.point : null;
   const [plane, setPlane] = useState<SpatialPlane>('XY');
   const [offsets, setOffsets] = useState({XY:0, XZ:0, YZ:0});
@@ -92,6 +107,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   }, [anchor, model, selection, node, member]);
 
   function pickTool(next:SpatialTool, keepSketch=false) {
+    setRejectedPick(null);
     if(!keepSketch)sketch.reset();
     sections.closeBulk();setTarget(null);setRequest(null);layers.close();
     setTool(next); setAnchor(null); setSelection(null); setError(''); setConfirmDelete(false);
@@ -131,9 +147,27 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   function select(next:SpatialSelection,point?:Vec3) {
     if(sections.bulk){if(next?.type==='member')sections.pick(next.id);return;}
     if(target&&next){applyTarget(target,next,point);return;}
-    sketch.reset();setRequest(null);setSelection(next); setError(''); setConfirmDelete(false);
+    setRejectedPick(null);sketch.reset();setRequest(null);setSelection(next); setError(''); setConfirmDelete(false);
     if (next) setPane(true);
   }
+  const dragGeometry:SpatialDrag=(pick,delta,phase)=>{
+    setRejectedPick(null);
+    if(committed.current!==model||phase==='cancel'){setPreview(null);setError('');return;}
+    const current=nodeById.get(pick.id);
+    try {
+      const next=pick.type==='member'?translateSpatialMember(model,pick.id,delta):
+        moveConstrainedSpatialNode(model,pick.id,{x:current!.x+delta.x,y:current!.y+delta.y,z:current!.z+delta.z});
+      setError('');
+      if(phase==='preview')setPreview({base:model,next});
+      else{
+        setPreview(null);select(pick);
+        if(next!==model)onChange(next);
+      }
+    } catch(err){
+      setRejectedPick(pick);setError((err as Error).message);
+      if(phase==='commit'){setPreview(null);setPane(true);}
+    }
+  };
   function editLoad(load:SpatialLoad){
     if(sections.bulk)return;
     pickTool('select');setPane(true);setSelection({type:load.target,id:load.targetId});
@@ -210,7 +244,8 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
     return () => window.removeEventListener('keydown', handleKey);
   });
   const draftKey = [tool, plane, offsets[plane], start?.x, start?.y, start?.z, relative, units.length].join('/');
-  const selectionKey = node && [node.id, node.x, node.y, node.z, units.length].join('/');
+  const locked=!!node&&spatialPositionLocked(model,node.id);
+  const selectionKey = node && [node.id, node.x, node.y, node.z, locked, units.length].join('/');
   const hint = target==='support'?'Choose a joint to set its support.':target==='distributed'?'Choose a member for the uniform load.':
     target?'Choose a joint or click a position on a member.':drawing ? (start ? 'Pick the next joint. Enter finishes the chain.' : 'Pick the first joint or enter its coordinates.')
     : tool === 'joint' ? 'Click a member to split it, or place a joint on the workplane.'
@@ -234,7 +269,9 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
             <button aria-label="Clear selection" onClick={() => select(null)}><X size={15}/></button></div>
           {node && <>
             <h3>Position <small>{units.length}</small></h3>
-            <Coordinates key={selectionKey} initial={node} action="Move joint" onApply={p => apply(() => updateSpatialNode(model, node.id, p))}/>
+            <Coordinates key={selectionKey} initial={node} action="Move joint" onApply={p => apply(() => updateSpatialNode(model, node.id, p))}
+              onLock={p=>apply(()=>setSpatialPositionLock(updateSpatialNode(model,node.id,p),node.id,true))}
+              onUnlock={locked?()=>apply(()=>setSpatialPositionLock(model,node.id,false)):undefined}/>
             <label className="sp-field">Joint type<select value={node.joint} onChange={e => apply(() => updateSpatialNode(model, node.id, {joint:e.target.value as Joint}))}>
               {Object.entries(jointNames).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
             <label className="sp-field">Support<select ref={supportInput} value={node.support} onChange={e => apply(() => updateSpatialNode(model, node.id, {support:e.target.value as Support}))}>
@@ -285,12 +322,12 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
         </div>
       </aside>}
       <div className="sp-viewport">
-        <SpatialCanvas nodes={model.nodes} members={model.members} tool={sections.bulk?'select':tool} plane={plane} offset={offsets[plane]}
+        <SpatialCanvas mobility={mobility} rejected={error&&rejectedPick?[rejectedPick]:sketch.rejected} nodes={visible.nodes} members={visible.members} onGeometryDrag={sections.bulk||target?undefined:dragGeometry} tool={sections.bulk?'select':tool} plane={plane} offset={offsets[plane]}
           snap={snap ? spacing??'auto' : 0} start={start} selection={selection} onPoint={place} onSelect={select}
           onMemberPoint={placeOnMember} showGrid={showGrid} showNames={showNames}
           onSketchPick={sections.bulk||target?undefined:pickGeometry} highlights={sections.bulk?sections.chosen.map(id=>({type:'member',id})):sketch.picks} renderOverlay={project=><>
-            {showLoads&&<SpatialLoadOverlay model={model} project={project}/>}
-            <SpatialRuleLayer model={model} project={project} dimensions={showDimensions} constraints={showConstraints} onOpen={sketch.inspect} onMove={sketch.moveLabel}/>
+            {showLoads&&<SpatialLoadOverlay model={visible} project={project}/>}
+            <SpatialRuleLayer model={visible} project={project} dimensions={showDimensions} constraints={showConstraints} onOpen={sketch.inspect} onMove={sketch.moveLabel}/>
           </>}/>
       </div>
     </div>
@@ -299,6 +336,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
       {name:'Constraints',checked:showConstraints,change:setShowConstraints},{name:'Loads',checked:showLoads,change:setShowLoads},
       {name:'Joint and member names',checked:showNames,change:setShowNames}])}
     {sections.dialog}
-    <footer className="sp-status"><span>{model.nodes.length} {model.nodes.length === 1 ? 'joint' : 'joints'} · {model.members.length} {model.members.length === 1 ? 'member' : 'members'}</span><span role="status">{sketch.feedback || (sketch.picks.length===1?'Pick the second point or member':'Ctrl-click geometry for constraints')}</span></footer>
+    <footer className="sp-status"><span>{model.nodes.length} {model.nodes.length === 1 ? 'joint' : 'joints'} · {model.members.length} {model.members.length === 1 ? 'member' : 'members'}</span><span role="status">{sketch.feedback || (sketch.picks.length===1?'Pick the second point or member':tool==='select'?'Drag a joint or member to move it · Shift-drag to pan · Ctrl-click for constraints':'Ctrl-click geometry for constraints')}</span>
+      {model.nodes.length>0&&<b className="sp-freedom" title="Remaining independent sketch motions">{[...mobility.nodes.values()].includes('conflict')?'Constraint conflict':mobility.dof===0?'Fully constrained':mobility.dof+' DOF'}</b>}</footer>
   </section>;
 }

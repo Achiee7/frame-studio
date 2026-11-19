@@ -117,5 +117,5 @@ export function useSpatialSketch(model:SpatialModel,onChange:(m:SpatialModel)=>v
       }}><b>{rule.id}</b> {actionLabel(rule.kind,'3D',rule.refs.length===1)}<span>{isSpatialDimension(rule.kind)?valueText(rule,model,units):''}{rule.driven?' (ref.)':rule.suppressed?' (off)':''}</span></button>)}
     </details>;
   }
-  return {select,startAction,activeAction:edit?.requested??current?.requested,inspect,moveLabel,related,reset,menu,feedback,picks:current?.picks??[]};
+  return {select,startAction,rejected:current?.error?current.picks:[],activeAction:edit?.requested??current?.requested,inspect,moveLabel,related,reset,menu,feedback,picks:current?.picks??[]};
 }

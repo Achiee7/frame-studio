@@ -44,6 +44,21 @@ export function workplanePoint(screen:ScreenPoint,camera:SpatialCamera,size:Canv
   point[normal]=offset;
   return point;
 }
+/** Use the active workplane through the grab. An edge-on plane falls back to the most face-on plane. */
+export function geometryDragPlane(camera:SpatialCamera,active:SpatialPlane):SpatialPlane {
+  const {towards}=basis(camera);
+  const facing=(plane:SpatialPlane)=>Math.abs(towards[planeAxes[plane][2]]);
+  if(facing(active)>=0.025)return active;
+  return (Object.keys(planeAxes) as SpatialPlane[]).reduce((a,b)=>facing(a)>=facing(b)?a:b);
+}
+
+export function geometryDragDelta(from:ScreenPoint,to:ScreenPoint,camera:SpatialCamera,size:CanvasSize,plane:SpatialPlane,step:number):Vec3 {
+  // In orthographic projection only the screen displacement matters. Working
+  // around zero preserves the grabbed depth and avoids a jump on off-grid joints.
+  const relative={x:size.width/2+to.x-from.x,y:size.height/2+to.y-from.y};
+  return workplanePoint(relative,{...camera,target:{x:0,y:0,z:0}},size,plane,0,step)!;
+}
+
 export function workplaneGrid(camera:SpatialCamera,size:CanvasSize,plane:SpatialPlane,offset:number,unit:number){
   if(size.width<=0||size.height<=0)return null;
   const corners=[{x:0,y:0},{x:size.width,y:0},{x:0,y:size.height},{x:size.width,y:size.height}]

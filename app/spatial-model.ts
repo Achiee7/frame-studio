@@ -7,7 +7,7 @@ import type {SpatialSection,SpatialLoad} from './spatial-analysis-input.ts';
 
 /** Positions are Cartesian coordinates in metres, with Z upward. */
 export type Vec3 = {x: number; y: number; z: number};
-export type SpatialNode = Vec3 & {id: string; joint: Joint; support: Support; spring?:number};
+export type SpatialNode = Vec3 & {id: string; joint: Joint; support: Support; spring?:number; positionLocked?:boolean};
 export type SpatialMember = {id: string; a: string; b: string; kind: 'beam' | 'strut'; section?:SpatialSection; family?:string};
 export type SpatialModel = {nodes: SpatialNode[]; members: SpatialMember[]; rules?:SpatialRule[]; loads?:SpatialLoad[]};
 
@@ -52,6 +52,7 @@ export function validSpatialModel(value: unknown): value is SpatialModel {
   const locations = new Set<string>();
   for (const node of nodes) {
     if (!validPosition(node) || !validId(node.id) || node.id==='@origin' || byId.has(node.id) || !jointTypes.has(node.joint) || !supportTypes.has(node.support)) return false;
+    if (node.positionLocked!==undefined && typeof node.positionLocked!=='boolean') return false;
     const location = JSON.stringify([node.x, node.y, node.z]);
     if (locations.has(location)) return false;
     locations.add(location);
@@ -100,7 +101,7 @@ export function addSpatialMember(model: SpatialModel, start: Vec3, end: Vec3, ki
   return {model: {...joined, members: [...joined.members, member]}, member};
 }
 
-export function updateSpatialNode(model: SpatialModel, id: string, change: Partial<Omit<SpatialNode, 'id'>>): SpatialModel {
+export function updateSpatialNode(model: SpatialModel, id: string, change: Partial<Omit<SpatialNode, 'id'|'positionLocked'>>): SpatialModel {
   const node = model.nodes.find(item => item.id === id);
   if (!node) throw Error('Select a joint in this model.');
   const updated = {...node, ...change, id};
