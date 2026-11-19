@@ -3,10 +3,13 @@ import type {MaterialSpec} from './materials.ts';
 import type {Beam,Model,MassProperties} from './model';
 
 export type SectionGeometry={shape:'i'|'rhs'|'chs'|'rectangle';h:number;b:number;tw:number;tf:number;t:number;r:number;ri?:number};
-export type SectionSpec={material?:MaterialSpec;id:string;name:string;category:string;E:number;A:number;I:number;Iminor?:number;geometry?:SectionGeometry;source?:string;method?:string;massProperties?:MassProperties};
+export type SectionSpec={material?:MaterialSpec;id:string;name:string;category:string;E:number;A:number;I:number;Iminor?:number;G?:number;J?:number;geometry?:SectionGeometry;source?:string;method?:string;massProperties?:MassProperties};
 export const HE_SOURCE='https://orangebook.arcelormittal.com/node/234';
 export const IPE_SOURCE='https://orangebook.arcelormittal.com/index.php/node/6';
 export const HOLLOW_SOURCE='https://www.steelforlifebluebook.co.uk/explanatory-notes/bs5950/properties/';
+export const INDUSTRIAL_SOURCE='https://www.budmatsteel.com/en/products/cold-formed-hollow-sections/';
+export const HOT_FINISHED_SOURCE='https://www.tatasteeluk.com/sites/default/files/pimcore_doc/tata-steel-uk-celsius-overview-brochure-en.pdf';
+export const SCAFFOLD_SOURCE='https://catalogs.barralaman.com.sa/wp-content/uploads/2024/08/jasco-ksa-catalog.pdf';
 export function geometryError(g:SectionGeometry):string {
  if(!g||!['i','rhs','chs','rectangle'].includes(g.shape))return 'Choose a section shape.';
  if(![g.h,g.b,g.tw,g.tf,g.t,g.r].every(x=>Number.isFinite(x)&&x>=0&&x<=10000)||g.h<=0||g.b<=0)return 'Dimensions must be finite, positive and at most 10,000 mm. Radius may be zero.';
@@ -28,14 +31,37 @@ export function sectionProperties(g:SectionGeometry){
  else {A=b*h;I=b*h**3/12;Iminor=h*b**3/12;}
  return {A:A/1e6,I:I/1e12,Iminor:Iminor/1e12};
 }
-export function validSection(s:any){return s===undefined||!!s&&validMaterial(s.material)&&typeof s.id==='string'&&typeof s.name==='string'&&s.name.length<=100&&typeof s.category==='string'&&[s.E,s.A,s.I].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e12)&&(s.Iminor===undefined||typeof s.Iminor==='number'&&Number.isFinite(s.Iminor)&&s.Iminor>0)&&(s.geometry===undefined||!geometryError(s.geometry))&&['source','method'].every(k=>s[k]===undefined||typeof s[k]==='string'&&s[k].length<500);}
+export function validSection(s:any){return s===undefined||!!s&&validMaterial(s.material)&&typeof s.id==='string'&&typeof s.name==='string'&&s.name.length<=100&&typeof s.category==='string'&&[s.E,s.A,s.I].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v<1e12)&&[s.Iminor,s.G,s.J].every(v=>v===undefined||typeof v==='number'&&Number.isFinite(v)&&v>0)&&(s.geometry===undefined||!geometryError(s.geometry))&&['source','method'].every(k=>s[k]===undefined||typeof s[k]==='string'&&s[k].length<500);}
 const steel=210e6;
 function rolled(category:string,rows:number[][]):SectionSpec[]{return rows.map(([size,h,b,tw,tf,r,A,I,Iminor])=>({id:`${category}-${size}`,name:`${category} ${size}`,category,E:steel,A:A/1e4,I:I/1e8,Iminor:Iminor/1e8,geometry:{shape:'i',h,b,tw,tf,t:0,r},source:category==='IPE'?IPE_SOURCE:HE_SOURCE,method:'Tabulated section properties · major-axis bending'}));}
+type TubeCategory='SHS'|'RHS'|'CHS'|'Scaffold';
+type TubeRange=[height:number,width:number,walls:number[]];
+
+function tubes(category:TubeCategory,rows:TubeRange[],source:string,coldFormed=false):SectionSpec[]{
+ const circular=category==='CHS'||category==='Scaffold';
+ return rows.flatMap(([h,b,walls])=>walls.map(t=>{
+  const radius=circular?0:coldFormed?(t<=6?2:t<=10?2.5:3)*t:1.5*t;
+  const geometry:SectionGeometry={shape:circular?'chs':'rhs',h,b,t,r:radius,tw:0,tf:0,...(!circular&&{ri:coldFormed?radius-t:t})};
+  const method=circular?'Circular annulus calculated from nominal outside diameter and wall thickness.':coldFormed?
+   'Cold-formed EN 10219 nominal geometry. Corner radii follow the Steel for Life Blue Book.':
+   'Hot-finished nominal geometry with outside radius 1.5t and inside radius 1.0t.';
+  const type=category==='Scaffold'?` · EN 39 type ${t===3.2?3:4}`:coldFormed&&!circular?' · CF':'';
+  const name=`${category==='Scaffold'?'Scaffold tube':category} ${circular?h:h+' × '+b} × ${t}${type}`;
+  return {id:`${category}-${h}-${b}-${t}${coldFormed&&!circular?'-CF':''}`,name,category,E:steel,geometry,...sectionProperties(geometry),source,method};
+ }));
+}
 export const sections:SectionSpec[]=[
  ...rolled('HEA',[[100,96,100,5,8,12,21.2,349,134],[120,114,120,5,8,12,25.3,606,231],[140,133,140,5.5,8.5,12,31.4,1030,389],[160,152,160,6,9,15,38.8,1670,616],[180,171,180,6,9.5,15,45.3,2510,925],[200,190,200,6.5,10,18,53.8,3690,1340],[240,230,240,7.5,12,21,76.8,7760,2770],[300,290,300,8.5,14,27,112,18300,6310]]),
  ...rolled('HEB',[[100,100,100,6,10,12,26,450,167],[120,120,120,6.5,11,12,34,864,318],[160,160,160,8,13,15,54.3,2490,889],[200,200,200,9,15,18,78.1,5700,2000]]),
  ...rolled('IPE',[[120,120,64,4.4,6.3,7,13.2,318,27.7],[160,160,82,5,7.4,9,20.1,869,68.3],[200,200,100,5.6,8.5,12,28.5,1940,142],[240,240,120,6.2,9.8,15,39.1,3890,284],[300,300,150,7.1,10.7,15,53.8,8360,604]]),
- ...[['SHS',60,60,3],['SHS',100,100,5],['SHS',150,150,6.3],['RHS',100,50,4],['RHS',150,100,5],['RHS',200,100,6.3],['CHS',60.3,60.3,3.2],['CHS',114.3,114.3,5],['CHS',168.3,168.3,6.3]].map(([cat,h,b,t])=>{const category=String(cat),geometry:SectionGeometry={shape:category==='CHS'?'chs':'rhs',h:+h,b:+b,tw:0,tf:0,t:+t,r:category==='CHS'?0:1.5*(+t),...(category==='CHS'?{}:{ri:+t})};return {id:`${category}-${h}-${b}-${t}`,name:category==='CHS'?`CHS ${h} × ${t}`:`${category} ${h} × ${b} × ${t}`,category,E:steel,geometry,...sectionProperties(geometry),source:HOLLOW_SOURCE,method:category==='CHS'?'Calculated from nominal circular dimensions':'Calculated nominal hot-finished shape · outside radius 1.5t, inside radius 1.0t'};}),
+ ...tubes('SHS',[[20,20,[1.5,2]],[25,25,[2]],[30,30,[2,3]],[40,40,[2,3,4]],[50,50,[2,3,4]],[60,60,[3,4]],[80,80,[3,4]],[100,100,[4,6]]],INDUSTRIAL_SOURCE,true),
+ ...tubes('RHS',[[30,20,[2]],[40,20,[2,3]],[40,30,[2,3]],[50,30,[2,3,4]],[60,40,[2,3,4]],[80,40,[3,4]],[100,50,[3,4]],[120,60,[4,5]]],INDUSTRIAL_SOURCE,true),
+ ...tubes('CHS',[[21.3,21.3,[2]],[26.9,26.9,[2,2.6]],[33.7,33.7,[2.6,3.2]],[42.4,42.4,[2.6]]],INDUSTRIAL_SOURCE,true),
+ ...tubes('SHS',[[40,40,[3.2,4]],[50,50,[4]],[60,60,[5]],[80,80,[5]],[100,100,[5,8]],[120,120,[6.3]],[150,150,[6.3,8]]],HOT_FINISHED_SOURCE),
+ ...tubes('RHS',[[50,30,[3.2]],[60,40,[4]],[80,40,[4]],[100,50,[4,5]],[120,80,[5]],[150,100,[5,6.3]],[200,100,[6.3,8]]],HOT_FINISHED_SOURCE),
+ ...tubes('CHS',[[42.4,42.4,[3.2]],[48.3,48.3,[3.2,4]],[60.3,60.3,[3.2,5]],[76.1,76.1,[4]],[88.9,88.9,[5]],[114.3,114.3,[5,6.3]],[168.3,168.3,[6.3]],[219.1,219.1,[8]]],HOT_FINISHED_SOURCE),
+ ...tubes('Scaffold',[[48.3,48.3,[3.2,4]]],SCAFFOLD_SOURCE),
+ ...tubes('SHS',[[60,60,[3]]],HOLLOW_SOURCE), // Existing project and favourite identifier.
 ];
 export function sectionForBeam(b:Beam):SectionSpec {const found=b.section??sections.find(s=>s.name===b.profile&&Math.abs(s.A/b.A-1)<.005&&Math.abs(s.I/b.I-1)<.005);return {...found,id:found?.id??'current',name:b.profile,category:found?.category??'Custom',E:b.E,A:b.A,I:b.I,massProperties:b.massProperties,material:b.material??found?.material};}
 export function applySection(m:Model,ids:string[],section:SectionSpec,wholeBeam=false){if(!validSection(section))throw Error('Invalid section properties.');const next=structuredClone(m),families=new Set(next.beams.filter(b=>ids.includes(b.id)).map(b=>b.family));next.beams.filter(b=>wholeBeam?families.has(b.family):ids.includes(b.id)).forEach(b=>Object.assign(b,{profile:section.name,E:section.material?.E??b.material?.E??b.E,A:section.A,I:section.I,section:structuredClone(section),...(section.material?{material:structuredClone(section.material)}:{}),massProperties:structuredClone(section.massProperties??{})}));return next;}

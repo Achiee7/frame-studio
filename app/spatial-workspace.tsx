@@ -1,6 +1,6 @@
-import {useEffect, useId, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import type {FormEvent} from 'react';
-import {Box, Check, ChevronRight, CircleDot, Eye, GitBranch, Hand, ListTree, MousePointer2, MoveUpRight, Orbit, Ruler, Link2, PanelLeftClose, PanelLeftOpen, Trash2, X} from 'lucide-react';
+import {Box, Check, ChevronRight, CircleDot, MoveUpRight, Ruler, Trash2, X} from 'lucide-react';
 import {useUnits} from './unit-context';
 import {inputNumber, lengthUnits, parseNumber, settingNumber} from './units';
 import NumberInput from './number-input';
@@ -8,12 +8,20 @@ import {supportTypes} from './support-symbol';
 import {SpatialCanvas} from './spatial-canvas';
 import type {SpatialPlane, SpatialSelection, SpatialTool} from './spatial-canvas';
 import {addSpatialMember, ensureSpatialNode, insertSpatialJoint, placeSpatialJoint, removeSpatialMember, removeSpatialNode, updateSpatialMember, updateSpatialNode} from './spatial-model';
-import type {SpatialModel, SpatialNode, Vec3} from './spatial-model';
+import type {SpatialModel, Vec3} from './spatial-model';
 import type {Joint, Support} from './model';
 import {useSpatialSketch} from './use-spatial-sketch';
 import {SpatialRuleLayer} from './spatial-rule-view';
 import {SpatialLoadOverlay} from './spatial-loads-view';
 import {SpatialAnalysisInspector} from './spatial-results-inspector';
+import type {SpatialLoadRequest} from './spatial-results-inspector';
+import type {SpatialLoad} from './spatial-analysis-input';
+import {actionLabel} from './sketch-actions';
+import type {SketchAction} from './sketch-actions';
+import SpatialComponentTree from './spatial-component-tree';
+import {SpatialModelRibbon,commandPosition,drawingTools,useSpatialLayers} from './spatial-model-ribbon';
+import type {TargetAction} from './spatial-model-ribbon';
+import {useSpatialSections} from './spatial-section-editor';
 import type {CursorPosition} from './sketch-popover';
 import './spatial-analysis-ui.css';
 import './spatial.css';
@@ -22,16 +30,6 @@ const axes = ['x', 'y', 'z'] as const;
 const normal = {XY:'z', XZ:'y', YZ:'x'} as const;
 const origin = {x:0, y:0, z:0};
 const jointNames:Record<Joint,string> = {rigid:'Rigid', pin:'Pin', hinge:'Internal hinge'};
-const tools = [
-  {id:'select', name:'Select', icon:MousePointer2, key:'V'},
-  {id:'beam', name:'Beam', icon:MoveUpRight, key:'B'},
-  {id:'strut', name:'Strut', icon:GitBranch, key:'T'},
-  {id:'joint', name:'Joint', icon:CircleDot, key:'J'},
-  {id:'dimension', name:'Dimension', icon:Ruler, key:'L'},
-  {id:'constraint', name:'Constraints', icon:Link2, key:'C'},
-  {id:'orbit', name:'Orbit', icon:Orbit, key:'O'},
-  {id:'pan', name:'Pan', icon:Hand, key:'H'},
-] as const;
 
 function Coordinates({initial, action, onApply}:{
   initial:Vec3; action:string; onApply:(point:Vec3)=>void;
@@ -66,16 +64,17 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   const start = anchor?.model === model ? anchor.point : null;
   const [plane, setPlane] = useState<SpatialPlane>('XY');
   const [offsets, setOffsets] = useState({XY:0, XZ:0, YZ:0});
-  const [snap, setSnap] = useState(true), [spacing, setSpacing] = useState(.25);
+  const [snap, setSnap] = useState(true), [spacing, setSpacing] = useState<number|null>(null);
   const [showGrid, setShowGrid] = useState(true), [showNames, setShowNames] = useState(true);
-  const [pane, setPane] = useState(true), [visibility, setVisibility] = useState(false);
+  const [pane, setPane] = useState(true), layers=useSpatialLayers();
   const [relative, setRelative] = useState(false);
   const [error, setError] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
-  const [treeOpen, setTreeOpen] = useState(false);
+  const [target,setTarget]=useState<TargetAction|null>(null),[request,setRequest]=useState<SpatialLoadRequest|null>(null);
+  const supportInput=useRef<HTMLSelectElement>(null);
+  const sections=useSpatialSections(model,selection,onChange);
   const sketch=useSpatialSketch(model,onChange);
   const sketchTool=tool==='constraint'||tool==='dimension';
   const [showDimensions,setShowDimensions]=useState(true),[showConstraints,setShowConstraints]=useState(true),[showLoads,setShowLoads]=useState(true);
-  const panelId = useId(), visibilityId = useId();
   const nodeById = useMemo(() => new Map(model.nodes.map(node => [node.id, node])), [model.nodes]);
   const node = selection?.type === 'node' ? nodeById.get(selection.id) : undefined;
   const member = selection?.type === 'member' ? model.members.find(item => item.id === selection.id) : undefined;
@@ -86,22 +85,63 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   const draftOnPlane = {...origin, [activePlaneAxis]:offsets[plane]};
   const pointInitial = start ? (relative ? origin : {...start}) : draftOnPlane;
   const fmtLength = (v:number) => settingNumber(v / factor, units, false) + ' ' + units.length;
-  const caption = (p:Vec3) => axes.map(axis => settingNumber(p[axis] / factor, units, false)).join(' / ') + ' ' + units.length;
 
   useEffect(() => {
     if (anchor && anchor.model !== model) setAnchor(null);
     if (selection && !node && !member) {setSelection(null); setConfirmDelete(false);}
   }, [anchor, model, selection, node, member]);
 
-  function pickTool(next:SpatialTool) {
-    sketch.reset();setTool(next); setAnchor(null); setSelection(null); setError(''); setConfirmDelete(false);
+  function pickTool(next:SpatialTool, keepSketch=false) {
+    if(!keepSketch)sketch.reset();
+    sections.closeBulk();setTarget(null);setRequest(null);layers.close();
+    setTool(next); setAnchor(null); setSelection(null); setError(''); setConfirmDelete(false);
     if (next === 'beam' || next === 'strut' || next === 'joint' || next==='dimension' || next==='constraint') setPane(true);
     if(next==='dimension')setShowDimensions(true);
     if(next==='constraint')setShowConstraints(true);
+    if(!keepSketch&&selection&&(next==='dimension'||next==='constraint')){
+      sketch.select(selection,commandPosition(),next,null,false);
+    }
   }
-  function select(next:SpatialSelection) {
-    sketch.reset();setSelection(next); setError(''); setConfirmDelete(false);
+  function startAction(action:SketchAction,dimension:boolean){
+    pickTool(dimension?'dimension':'constraint',true);
+    sketch.startAction(action,selection,commandPosition());
+  }
+  function applyTarget(action:TargetAction,next:NonNullable<SpatialSelection>,point?:Vec3){
+    if(action==='support'&&next.type!=='node'||action==='distributed'&&next.type!=='member'){
+      setError(action==='support'?'Choose a joint for the support.':'Choose a member for a distributed load.');return;
+    }
+    setSelection(next);setPane(true);setError('');setTarget(null);
+    if(action==='support'){
+      requestAnimationFrame(()=>{supportInput.current?.focus();supportInput.current?.scrollIntoView({block:'nearest'});});
+      return;
+    }
+    let t:number|undefined;
+    const b=point&&next.type==='member'?model.members.find(m=>m.id===next.id):undefined;
+    if(b&&point){
+      const a=nodeById.get(b.a)!,end=nodeById.get(b.b)!;
+      const d={x:end.x-a.x,y:end.y-a.y,z:end.z-a.z};
+      t=Math.max(0,Math.min(1,((point.x-a.x)*d.x+(point.y-a.y)*d.y+(point.z-a.z)*d.z)/(d.x*d.x+d.y*d.y+d.z*d.z)));
+    }
+    setRequest({target:next.type,targetId:next.id,kind:action,t});setShowLoads(true);
+  }
+  function chooseTarget(action:TargetAction){
+    pickTool('select');setTarget(action);setPane(true);
+    if(selection&&(action!=='support'||selection.type==='node')&&(action!=='distributed'||selection.type==='member'))applyTarget(action,selection);
+  }
+  function select(next:SpatialSelection,point?:Vec3) {
+    if(sections.bulk){if(next?.type==='member')sections.pick(next.id);return;}
+    if(target&&next){applyTarget(target,next,point);return;}
+    sketch.reset();setRequest(null);setSelection(next); setError(''); setConfirmDelete(false);
     if (next) setPane(true);
+  }
+  function editLoad(load:SpatialLoad){
+    if(sections.bulk)return;
+    pickTool('select');setPane(true);setSelection({type:load.target,id:load.targetId});
+    setRequest({target:load.target,targetId:load.targetId,kind:load.kind,editId:load.id});
+  }
+  function openSections(){
+    const previous=selection;
+    pickTool('select');setSelection(previous);sections.open();
   }
   function pickGeometry(p:SpatialSelection,at:CursorPosition,shortcut:boolean) {
     const mode=shortcut||tool!=='dimension'?'constraint':'dimension';
@@ -110,6 +150,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
     if(shortcut){setTool('select');setShowConstraints(true);}
   }
   function treePick(p:NonNullable<SpatialSelection>,e:React.MouseEvent) {
+    if(sections.bulk||target){select(p);return;}
     if(sketchTool||e.ctrlKey||e.metaKey)pickGeometry(p,{x:e.clientX,y:e.clientY},e.ctrlKey||e.metaKey);
     else{pickTool('select');select(p);}
   }
@@ -159,10 +200,10 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || document.querySelector('[role="dialog"], .main-menu')) return;
       if (target?.closest('input,select,textarea,[contenteditable=true]')) return;
       if (target?.closest('button,summary') && (event.key === 'Enter' || event.key === ' ')) return;
-      if (event.key === 'Escape') {finish(); setVisibility(false); event.preventDefault(); return;}
+      if (event.key === 'Escape') {finish(); event.preventDefault(); return;}
       if (event.key === 'Enter' && drawing) {finish(); event.preventDefault(); return;}
       if ((event.key === 'Delete' || event.key === 'Backspace') && selection) {remove(); event.preventDefault(); return;}
-      const shortcut = tools.find(item => item.key === event.key.toUpperCase());
+      const shortcut = drawingTools.find(item => item.key === event.key.toUpperCase());
       if (shortcut) {pickTool(shortcut.id); event.preventDefault();}
     };
     window.addEventListener('keydown', handleKey);
@@ -170,36 +211,24 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   });
   const draftKey = [tool, plane, offsets[plane], start?.x, start?.y, start?.z, relative, units.length].join('/');
   const selectionKey = node && [node.id, node.x, node.y, node.z, units.length].join('/');
-  const hint = drawing ? (start ? 'Pick the next joint. Enter finishes the chain.' : 'Pick the first joint or enter its coordinates.')
+  const hint = target==='support'?'Choose a joint to set its support.':target==='distributed'?'Choose a member for the uniform load.':
+    target?'Choose a joint or click a position on a member.':drawing ? (start ? 'Pick the next joint. Enter finishes the chain.' : 'Pick the first joint or enter its coordinates.')
     : tool === 'joint' ? 'Click a member to split it, or place a joint on the workplane.'
     : tool === 'pan' ? 'Drag to pan.' : tool === 'orbit' ? 'Drag to orbit the frame.'
+    : sketch.activeAction?actionLabel(sketch.activeAction,'3D')+' · pick the geometry in the drawing or tree.'
     : tool==='dimension'?'Pick a member for length, two points for distance, two members for an angle, or a point and a member for an offset.'
     : tool==='constraint'?'Pick one member or two objects. Along X, Y or Z aligns the selection to a global axis.'
     : 'Select geometry to edit it. Ctrl-click a pair for constraints.';
   return <section className="sp-workspace" aria-label="3D frame modelling">
-    <div className="sp-toolbar" role="toolbar" aria-label="3D drawing tools">
-      <button type="button" className="sp-pane-switch" aria-label={pane ? 'Hide drafting panel' : 'Show drafting panel'}
-        aria-expanded={pane} aria-controls={panelId} onClick={() => setPane(!pane)}>
-        {pane ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}
-      </button>
-      {tools.map(item => <button key={item.id} type="button" className={'sp-tool sp-tool-' + item.id}
-        aria-pressed={tool === item.id} title={item.name + ' (' + item.key + ')'} onClick={() => pickTool(item.id)}>
-        <item.icon size={16}/><span>{item.name}</span>
-      </button>)}
-      <div className="sp-visibility">
-        <button type="button" aria-label="3D display options" title="Display options" aria-expanded={visibility}
-          aria-controls={visibilityId} onClick={() => setVisibility(!visibility)}><Eye size={16}/></button>
-        {visibility && <div id={visibilityId} className="sp-visibility-menu">
-          <label><input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)}/>Workplane grid</label>
-          <label><input type="checkbox" checked={showDimensions} onChange={e=>setShowDimensions(e.target.checked)}/>Dimensions</label>
-          <label><input type="checkbox" checked={showConstraints} onChange={e=>setShowConstraints(e.target.checked)}/>Constraints</label>
-          <label><input type="checkbox" checked={showLoads} onChange={e=>setShowLoads(e.target.checked)}/>Loads</label>
-          <label><input type="checkbox" checked={showNames} onChange={e => setShowNames(e.target.checked)}/>Joint and member names</label>
-        </div>}
-      </div>
-    </div>
+    <div data-sketch-surface="ribbon"><SpatialModelRibbon tool={tool} target={target} activeAction={sketch.activeAction}
+      onTool={pickTool} onTarget={chooseTarget} onAction={startAction} onSections={openSections}
+      pane={pane} onPane={()=>setPane(!pane)} layers={layers.open} onLayers={layers.toggle}/></div>
+    {sections.selectionBar}
     <div className="sp-body">
-      {pane && <aside id={panelId} className="sp-inspector" aria-label="3D drafting panel">
+      {pane && <aside className="sp-inspector sp-explorer" aria-label="3D drafting panel">
+        <SpatialComponentTree model={model} selected={selection} selectedLoad={request?.editId} highlightedMembers={sections.chosen}
+          onPick={treePick} onLoad={editLoad}/>
+        <div className="sp-properties">
         {node || member ? <section className="sp-section">
           <div className="sp-heading"><h2>{node ? <CircleDot/> : <MoveUpRight/>}{node ? 'Joint ' + node.id : 'Member ' + member!.id}</h2>
             <button aria-label="Clear selection" onClick={() => select(null)}><X size={15}/></button></div>
@@ -208,7 +237,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
             <Coordinates key={selectionKey} initial={node} action="Move joint" onApply={p => apply(() => updateSpatialNode(model, node.id, p))}/>
             <label className="sp-field">Joint type<select value={node.joint} onChange={e => apply(() => updateSpatialNode(model, node.id, {joint:e.target.value as Joint}))}>
               {Object.entries(jointNames).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
-            <label className="sp-field">Support<select value={node.support} onChange={e => apply(() => updateSpatialNode(model, node.id, {support:e.target.value as Support}))}>
+            <label className="sp-field">Support<select ref={supportInput} value={node.support} onChange={e => apply(() => updateSpatialNode(model, node.id, {support:e.target.value as Support}))}>
               {supportTypes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             {attached.length > 0 && <><h3>Connected members</h3>{attached.map(item => <button key={item.id} className="sp-row" onClick={() => select({type:'member', id:item.id})}>
               <MoveUpRight size={13}/><b>{item.id}</b><span>{item.kind}</span><ChevronRight size={13}/></button>)}</>}
@@ -224,14 +253,15 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
             })}
           </>}
           {selection && sketch.related(selection)}
-          {selection && <SpatialAnalysisInspector model={model} selection={selection} onChange={onChange}/>}
+          {selection && <SpatialAnalysisInspector model={model} selection={selection} sections={sections} request={request} onDone={()=>setRequest(null)} onChange={onChange}/>}
           {confirmDelete && node && attached.length > 0 && <p role="alert">Removing {node.id} also removes {attached.map(item => item.id).join(', ')}.</p>}
           <div className="sp-delete-row"><button className="sp-remove" onClick={remove}><Trash2 size={13}/>{confirmDelete ? 'Confirm removal' : node ? 'Remove joint' : 'Remove member'}</button>
             {confirmDelete && <button onClick={() => setConfirmDelete(false)}>Cancel</button>}</div>
         </section> : <section className="sp-section">
-          <div className="sp-heading"><h2>{sketchTool?<Ruler/>:<Box/>}{sketchTool?(tool==='dimension'?'Dimension':'Constraints'):placing ? (tool === 'joint' ? 'Place joint' : tool === 'beam' ? 'Draw beam' : 'Draw strut') : 'Workplane'}</h2></div>
+          <div className="sp-heading"><h2>{sketchTool?<Ruler/>:<Box/>}{target?({force:'Point force',moment:'Moment',distributed:'Distributed load',support:'Support'})[target]:
+            sketchTool?(tool==='dimension'?'Dimension':'Constraints'):placing ? (tool === 'joint' ? 'Place joint' : tool === 'beam' ? 'Draw beam' : 'Draw strut') : 'Workplane'}</h2></div>
           <p className="sp-hint">{hint}</p>
-          {!sketchTool&&<><span className="sp-field-label">Drawing plane</span>
+          {!sketchTool&&!target&&<><span className="sp-field-label">Drawing plane</span>
           <div className="sp-planes" role="group" aria-label="Drawing plane">
             {(['XY','XZ','YZ'] as const).map(p => <button key={p} aria-pressed={plane === p} onClick={() => setPlane(p)}>{p}</button>)}
           </div>
@@ -239,7 +269,9 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
             <NumberInput key={plane} label="Workplane offset" value={offsets[plane] / factor} onCommit={n => setOffsets({...offsets, [plane]:n * factor})}/>
           </label>
           <label className="sp-check"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)}/>Snap to grid</label>
-          {snap && <label className="sp-field">Grid step ({units.length})<NumberInput label="Grid step" min={1e-6 / factor} value={spacing / factor} onCommit={n => setSpacing(n * factor)}/></label>}
+          {snap && <><label className="sp-field">Snap spacing<select value={spacing===null?'auto':'fixed'} onChange={e=>setSpacing(e.target.value==='auto'?null:.25)}>
+            <option value="auto">Auto · follows grid</option><option value="fixed">Fixed spacing</option></select></label>
+            {spacing!==null&&<label className="sp-field">Grid step ({units.length})<NumberInput label="Grid step" min={1e-6 / factor} value={spacing / factor} onCommit={n=>setSpacing(n*factor)}/></label>}</>}
           </>}
           {placing && <div className="sp-entry">
             <h3>{drawing ? (start ? 'Next joint' : 'First joint') : 'Joint position'} <small>{units.length}</small></h3>
@@ -250,25 +282,23 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
           </div>}
         </section>}
         {error && <p className="sp-error" role="alert">{error}</p>}
-        {(model.nodes.length > 0 || model.members.length > 0) && <details data-sketch-surface="tree" className="sp-tree" open={treeOpen} onToggle={e => setTreeOpen(e.currentTarget.open)}>
-          <summary><ListTree size={15}/>Model tree</summary>
-          <h3>Joints <small>{model.nodes.length}</small></h3>{model.nodes.map((item:SpatialNode) => <button key={item.id} className="sp-row" onClick={e=>treePick({type:'node',id:item.id},e)}>
-            <CircleDot size={12}/><b>{item.id}</b><span>{caption(item)}</span></button>)}
-          <h3>Members <small>{model.members.length}</small></h3>{model.members.map(item => <button key={item.id} className="sp-row" onClick={e=>treePick({type:'member',id:item.id},e)}>
-            <MoveUpRight size={12}/><b>{item.id}</b><span>{item.a} – {item.b}</span></button>)}
-        </details>}
+        </div>
       </aside>}
       <div className="sp-viewport">
-        <SpatialCanvas nodes={model.nodes} members={model.members} tool={tool} plane={plane} offset={offsets[plane]}
-          snap={snap ? spacing : 0} start={start} selection={selection} onPoint={place} onSelect={select}
+        <SpatialCanvas nodes={model.nodes} members={model.members} tool={sections.bulk?'select':tool} plane={plane} offset={offsets[plane]}
+          snap={snap ? spacing??'auto' : 0} start={start} selection={selection} onPoint={place} onSelect={select}
           onMemberPoint={placeOnMember} showGrid={showGrid} showNames={showNames}
-          onSketchPick={pickGeometry} highlights={sketch.picks} renderOverlay={project=><>
+          onSketchPick={sections.bulk||target?undefined:pickGeometry} highlights={sections.bulk?sections.chosen.map(id=>({type:'member',id})):sketch.picks} renderOverlay={project=><>
             {showLoads&&<SpatialLoadOverlay model={model} project={project}/>}
             <SpatialRuleLayer model={model} project={project} dimensions={showDimensions} constraints={showConstraints} onOpen={sketch.inspect} onMove={sketch.moveLabel}/>
           </>}/>
       </div>
     </div>
     {sketch.menu}
+    {layers.menu([{name:'Workplane grid',checked:showGrid,change:setShowGrid},{name:'Dimensions',checked:showDimensions,change:setShowDimensions},
+      {name:'Constraints',checked:showConstraints,change:setShowConstraints},{name:'Loads',checked:showLoads,change:setShowLoads},
+      {name:'Joint and member names',checked:showNames,change:setShowNames}])}
+    {sections.dialog}
     <footer className="sp-status"><span>{model.nodes.length} {model.nodes.length === 1 ? 'joint' : 'joints'} · {model.members.length} {model.members.length === 1 ? 'member' : 'members'}</span><span role="status">{sketch.feedback || (sketch.picks.length===1?'Pick the second point or member':'Ctrl-click geometry for constraints')}</span></footer>
   </section>;
 }

@@ -1,5 +1,6 @@
 import type {Vec3} from './spatial-model';
 import {spatialMemberIntersection} from './spatial-model.ts';
+import {clampDrawingScale,draftingStep,gridPixels,maxGridIntervals,snapCoordinate} from './drafting-grid.ts';
 
 export type SpatialPlane = 'XY' | 'XZ' | 'YZ';
 export type ViewName = 'Isometric' | 'Top' | 'Front' | 'Right';
@@ -39,16 +40,34 @@ export function workplanePoint(screen:ScreenPoint,camera:SpatialCamera,size:Canv
   const scale=camera.height/size.height;
   const ray=shift(shift(camera.target,right,(screen.x-size.width/2)*scale),up,(size.height/2-screen.y)*scale);
   const point=shift(ray,towards,(offset-ray[normal])/towards[normal]);
-  if(snap>0)for(const axis of planeAxes[plane].slice(0,2))point[axis]=Math.round(point[axis]/snap)*snap;
+  if(snap>0)for(const axis of planeAxes[plane].slice(0,2))point[axis]=snapCoordinate(point[axis],snap);
   point[normal]=offset;
   return point;
+}
+export function workplaneGrid(camera:SpatialCamera,size:CanvasSize,plane:SpatialPlane,offset:number,unit:number){
+  if(size.width<=0||size.height<=0)return null;
+  const corners=[{x:0,y:0},{x:size.width,y:0},{x:0,y:size.height},{x:size.width,y:size.height}]
+    .map(p=>workplanePoint(p,camera,size,plane,offset));
+  if(corners.some(p=>!p))return null;
+  const [u,v]=planeAxes[plane];
+  function bounds(axis:typeof u|typeof v) {
+    const values=corners.map(p=>p![axis]);
+    const low=Math.min(...values),high=Math.max(...values);
+    // Distance in model coordinates per pixel perpendicular to this grid family.
+    const perPixel=Math.hypot((values[1]-values[0])/size.width,(values[2]-values[0])/size.height);
+    return {low,high,minimum:Math.max(gridPixels*perPixel,(high-low)/maxGridIntervals)};
+  }
+  const ub=bounds(u),vb=bounds(v);
+  const step=draftingStep(Math.max(ub.minimum,vb.minimum,gridPixels*camera.height/size.height),unit,
+    Math.max(Math.abs(ub.low),Math.abs(ub.high),Math.abs(vb.low),Math.abs(vb.high)));
+  return {lowU:ub.low,highU:ub.high,lowV:vb.low,highV:vb.high,step};
 }
 export function panCamera(camera:SpatialCamera,size:CanvasSize,dx:number,dy:number):SpatialCamera {
   const {right,up}=basis(camera),scale=camera.height/size.height;
   return {...camera,target:shift(shift(camera.target,right,-dx*scale),up,dy*scale)};
 }
 export function zoomCamera(camera:SpatialCamera,size:CanvasSize,point:ScreenPoint,factor:number):SpatialCamera {
-  const height=Math.max(1e-7,Math.min(1e14,camera.height*factor));
+  const height=size.height/clampDrawingScale((size.height/camera.height)/factor);
   const ratio=1-height/camera.height;
   return {...panCamera(camera,size,(size.width/2-point.x)*ratio,(size.height/2-point.y)*ratio),height};
 }
@@ -62,5 +81,5 @@ export function fitCamera(camera:SpatialCamera,nodes:Vec3[],size:CanvasSize):Spa
   const target=shift(center.target,basis(camera).towards,(Math.min(...zs)+Math.max(...zs))/2);
   const padding=Math.min(65,Math.min(size.width,size.height)*.17);
   const extent=Math.max((xMax-xMin)*size.height/(size.width-2*padding),(yMax-yMin)*size.height/(size.height-2*padding));
-  return {...camera,target,height:extent>1e-8?extent:initialCamera.height};
+  return {...camera,target,height:extent>0?size.height/clampDrawingScale(size.height/extent):initialCamera.height};
 }

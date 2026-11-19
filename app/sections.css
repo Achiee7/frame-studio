@@ -53,3 +53,36 @@
 .member-annotation-branch .member-annotation-empty{margin:0;padding:4px 10px 9px;color:#657e72;font-size:10px}
 .member-annotation .embedded-editor{position:static;z-index:auto;width:auto;margin:0 0 7px;padding:8px;box-shadow:none}
 .member-annotation .annotation-position{margin:0 0 6px;font-size:10px;padding:4px 7px}
+.section-assign-controls {
+  display: grid;
+  gap: 9px;
+  margin: 15px 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #dce7df;
+}
+.section-assign-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.section-assign-actions button { flex: 1 1 auto; white-space: nowrap; font-size: 12px; padding: 9px 8px; }
+.section-assign-controls label { display: block; margin: 0; }
+.section-assign-controls .toggle-row { display: flex; }
+.section-assign-controls select { width: 100%; margin-top: 4px; }
+.section-quick-picker { display: block; margin: 12px 0 8px; }
+.section-quick-picker select { width: 100%; margin-top: 5px; }
+.section-tree button { display: flex; align-items: center; gap: 5px; }
+.section-card strong { overflow-wrap: anywhere; }
+.section-detail .profile-editor, .member-section-view .profile-editor { background: #f8fbf9; border: 1px solid #d6e2d9; border-radius: 8px; }
+.profile-editor .section-drawing.dimensioned { display: block; width: 100%; height: auto; max-height: 245px; border-radius: 8px; }
+.section-drawing .profile-dimension-lines { stroke: #738b7e; stroke-width: 1; }
+.profile-dimension .profile-dim-chip rect { fill: #f8fbf9; stroke: #d2dcd5; }
+.profile-dimension .profile-dim-chip text { fill: #304c40; stroke: none; font: 700 13px system-ui,sans-serif; font-variant-numeric: tabular-nums; }
+.profile-dimension .profile-dim-chip.is-editable { cursor: pointer; outline: none; }
+.profile-dimension .profile-dim-chip.is-editable rect { fill: #fff; stroke: #729b87; stroke-width: 1.2; }
+.profile-dimension .profile-dim-chip.is-editable text { fill: #204d39; }
+.profile-dimension .profile-dim-chip.is-editable:is(:hover,:focus-visible) rect { fill: #e4f3eb; stroke: #287554; stroke-width: 2; }
+.profile-editor .profile-size-editor { margin: 0; border: 0; border-top: 1px solid #d6e2d9; box-shadow: none; border-radius: 0 0 8px 8px; }
+@media (max-width:650px) {
+  .modal:has(.section-library) { width: calc(100% - 10px); }
+  .section-library { grid-template-columns: minmax(90px, 27%) minmax(0,1fr); }
+  .section-detail,.section-browser { padding: 10px; }
+  .section-assign-actions button { font-size: 11px; padding: 8px 5px; }
+  .section-tree button small { display: none; }
+}
