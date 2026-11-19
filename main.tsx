@@ -4,4 +4,5 @@ import Studio from './app/studio';
 import './app/globals.css';
 import './app/cad.css';
 import './app/sections.css';
+import './app/cad-layout.css';
 createRoot(document.getElementById('root')!).render(<StrictMode><Studio/></StrictMode>);

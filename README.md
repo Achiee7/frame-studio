@@ -26,14 +26,16 @@ Select a 3D joint or member to add a load. Open **3D Results** for support react
 
 ## Sections and easier modelling
 
-- Browse HEA, HEB, IPE and hollow sections in a category tree with profile previews, dimensioned drawings and property details.
+- Open **Build → Sections** for HEA, HEB, IPE, hollow profiles and EN 39 scaffold tubes. **Use section** applies the profile to one member. **Apply to multiple** returns to the drawing so you can pick several members, then apply once. A member’s quick selector includes the profiles used in its drawing and your favourites.
 - Star favourite sections, or create named custom profiles from a standard shape and edit all dimensions. Favourites, saved sections and CAD mass properties stay in your browser and travel with backups.
 - Member settings put end releases and continuity first, followed by a foldable section preview.
-- Box-select geometry, use Shift to extend a selection, and navigate the optional hierarchical model tree.
+- The 2D and 3D workspaces share a CAD ribbon. Build and Forces use labelled commands. Hover or keyboard-focus a constraint icon for its name and usage. Use the pin at the right edge to collapse the ribbon between commands.
+- The model tree opens on the left. Expand Components or Forces and select an item to edit its properties. Shift-click and box selection extend the 2D selection.
+- Select a member and choose Horizontal or Vertical in 2D, or Along X, Y or Z in 3D. Ctrl-click a single member for the same axis choices beside the cursor. Both drawings refine their grid as you zoom in.
 - Press Enter to finish drawing; Escape cancels the preview. Member lengths appear on the canvas.
 - Apply point or distributed forces normal to a beam, following its angle. Deflection diagrams show actual displacement values in the selected units. Hover the section name for read-only properties.
 
-- Double-click a dimension on a profile drawing to resize it live, in the section library or selected member preview. Enter applies the size; Escape restores it. Standard profiles become custom snapshots. Area and inertia recalculate; resizing a continuous beam preserves each segment’s material.
+- Click a boxed dimension on a profile drawing to resize it live, in the section library or selected member preview. Enter applies the size. Escape restores it. Standard profiles become custom snapshots. Area and inertia recalculate; resizing a continuous beam preserves each segment’s material.
 - Stress colours vary along the members: green reflects normal stress relative to that member’s yield strength, orange shows yielded history, and red shows an entered limit. The Stress view labels the section peak. Deflection uses an independent blue–purple magnitude scale.
 - Results update during dragging. A persistent background material solver keeps the latest edit; a clearly labelled elastic preview updates immediately while it catches up. Older material results are never drawn on a newer model.
 - Settings includes 0–10 decimal places and decimal/scientific notation. The sketch, result labels and report summaries use the saved display preferences; unrounded calculations and input precision are retained.
