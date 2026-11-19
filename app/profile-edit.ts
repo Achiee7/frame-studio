@@ -7,7 +7,7 @@ export function resizedSection(base:SectionSpec,key:ProfileDimension,value:numbe
  if(!base.geometry)throw Error('This section has no editable geometry.');
  const geometry={...base.geometry,[key]:value};if(geometry.shape==='chs')geometry.b=geometry.h;
  const error=geometryError(geometry);if(error)throw Error(error);
- return {...structuredClone(base),id:base.category==='Custom'?base.id:'custom-'+crypto.randomUUID().slice(0,8),name:base.category==='Custom'?base.name:'Custom '+base.name,category:'Custom',geometry,...sectionProperties(geometry),source:undefined,method:'Calculated from editable nominal geometry'};
+ return {...structuredClone(base),id:base.category==='Custom'?base.id:'custom-'+crypto.randomUUID().slice(0,8),name:base.category==='Custom'?base.name:('Custom '+base.name).slice(0,100),category:'Custom',geometry,...sectionProperties(geometry),J:undefined,source:undefined,method:'Calculated from editable nominal geometry'};
 }
 export function resizeMemberSection(model:Model,ids:string[],section:SectionSpec,wholeBeam=false){
  const next=applySection(model,ids,{...section,material:undefined},wholeBeam),families=new Set(model.beams.filter(b=>ids.includes(b.id)).map(b=>b.family));

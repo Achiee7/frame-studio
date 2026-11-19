@@ -2,7 +2,7 @@ import {useState} from 'react';
 import {Trash2} from 'lucide-react';
 import {useUnits} from './unit-context';
 import {inputNumber,lengthUnits,parseNumber,settingNumber} from './units';
-import {actionLabel,availableActions,samePick,toggleGeometry} from './sketch-actions';
+import {actionLabel,availableActions,samePick,spatialCommandSelection,toggleGeometry} from './sketch-actions';
 import type {ActionMode,GeometryPick,SketchAction} from './sketch-actions';
 import {createSpatialRule,editSpatialRule,isSpatialDimension,removeSpatialRule,spatialMeasurement,
   spatialRuleTouchesMember,spatialRuleValue,suppressSpatialRule} from './spatial-sketch';
@@ -11,8 +11,8 @@ import type {SpatialModel} from './spatial-model';
 import {SketchActionMenu,SketchPopover} from './sketch-popover';
 import type {CursorPosition} from './sketch-popover';
 
-type Picking={model:SpatialModel;at:CursorPosition;picks:GeometryPick[];mode:ActionMode;shortcut:boolean;error?:string};
-type Editing={model:SpatialModel;at:CursorPosition;picks:GeometryPick[];action:SketchAction;rule?:SpatialRule};
+type Picking={model:SpatialModel;at:CursorPosition;picks:GeometryPick[];mode:ActionMode;requested?:SketchAction;error?:string};
+type Editing={model:SpatialModel;at:CursorPosition;picks:GeometryPick[];action:SketchAction;requested?:SketchAction;rule?:SpatialRule};
 const pickName=(p:GeometryPick)=>p.id==='@origin'?'Origin':p.id;
 function valueText(rule:SpatialRule,model:SpatialModel,units:ReturnType<typeof useUnits>) {
   const angle=rule.kind==='angle';
@@ -59,34 +59,52 @@ export function useSpatialSketch(model:SpatialModel,onChange:(m:SpatialModel)=>v
   const [feedback,setFeedback]=useState('');
   const current=pending?.model===model?pending:null,edit=editing?.model===model?editing:null;
   const reset=()=>{setPending(null);setEditing(null);setFeedback('');};
-  function select(picked:GeometryPick|null,at:CursorPosition,mode:ActionMode,base:GeometryPick|null,shortcut:boolean){
-    setEditing(null);setFeedback('');
-    if(!picked){setPending(null);return;}
-    const picks=toggleGeometry(current?.picks??(base?[base]:[]),picked);
-    setPending(picks.length?{picks,at,mode,model,shortcut}:null);
-  }
   function inspect(rule:SpatialRule,at:CursorPosition){
     setPending(null);setFeedback('');
     setEditing({model,at,picks:rule.refs,action:rule.kind,rule});
   }
-  function commit(m:SpatialModel,message?:string){
-    onChange(m);setPending(null);setEditing(null);setFeedback(message??'');
+  function commit(m:SpatialModel,message?:string,requested=edit?.requested,at=edit?.at){
+    onChange(m);setEditing(null);setFeedback(message??'');
+    setPending(requested&&at?{model:m,at,picks:[],requested,mode:isSpatialDimension(requested)?'dimension':'constraint'}:null);
   }
-  function choose(action:SketchAction){
-    if(!current)return;
+  function applyAction(selection:Picking,action:SketchAction){
     if(isSpatialDimension(action)){
-      setEditing({model,at:current.at,picks:current.picks,action});setPending(null);
+      setEditing({model,at:selection.at,picks:selection.picks,action,requested:selection.requested});setPending(null);
       return;
     }
-    try{commit(createSpatialRule(model,action,current.picks));}
-    catch(err){setPending({...current,error:(err as Error).message});}
+    try{commit(createSpatialRule(model,action,selection.picks),undefined,selection.requested,selection.at);}
+    catch(err){const message=(err as Error).message;setFeedback(message);setPending({...selection,error:message});}
+  }
+  function runCommand(requested:SketchAction,picks:GeometryPick[],at:CursorPosition){
+    const mode=isSpatialDimension(requested)?'dimension':'constraint';
+    const resolved=spatialCommandSelection(requested,mode,picks,model.members);
+    const selection={model,requested,at,mode,picks:resolved.picks} satisfies Picking;
+    if(resolved.complete)applyAction(selection,resolved.action);
+    else{setPending(selection);setFeedback(resolved.error);}
+  }
+  function startAction(action:SketchAction,base:GeometryPick|null,at:CursorPosition){
+    setEditing(null);setFeedback('');
+    const picks=current?.picks.length?current.picks:base?[base]:[];
+    runCommand(action,picks,at);
+  }
+  function select(picked:GeometryPick|null,at:CursorPosition,mode:ActionMode,base:GeometryPick|null,shortcut:boolean){
+    setEditing(null);setFeedback('');
+    const requested=shortcut?undefined:current?.requested;
+    if(!picked){
+      setPending(requested?{model,at,picks:[],mode,requested}:null);
+      return;
+    }
+    const initial=current?.picks??(base&&!samePick(base,picked)?[base]:[]);
+    const picks=toggleGeometry(initial,picked);
+    if(requested)runCommand(requested,picks,at);
+    else setPending(picks.length?{picks,at,mode,model}:null);
   }
   const actions=current?availableActions('3D',current.mode,current.picks,model.members).filter(id=>
     current.mode==='dimension'||!model.rules?.some(r=>r.kind===id && !r.suppressed &&
       r.refs.length===current.picks.length && r.refs.every(ref=>!ref.segments?.length && current.picks.some(p=>samePick(ref,p))))):[];
   const menu=edit?<RuleEditor key={[edit.action,edit.rule?.id,edit.picks.map(pickName).join('/')].join('-')} edit={edit} model={model} onChange={commit} onClose={reset}/>:
-    current&&(current.picks.length===2||!current.shortcut&&current.picks[0]?.type==='member')?<SketchActionMenu at={current.at} space="3D" mode={current.mode}
-      picks={current.picks} describe={pickName} actions={actions} error={current.error} onAction={choose} onClose={reset}/>:null;
+    current&&!current.requested&&(current.picks.length===2||current.picks[0]?.type==='member')?<SketchActionMenu at={current.at} space="3D" mode={current.mode}
+      picks={current.picks} describe={pickName} actions={actions} error={current.error} onAction={action=>applyAction(current,action)} onClose={reset}/>:null;
   function moveLabel(rule:SpatialRule,offset:CursorPosition){
     commit({...model,rules:model.rules?.map(r=>r.id===rule.id?{...r,labelOffset:offset}:r)});
   }
@@ -99,5 +117,5 @@ export function useSpatialSketch(model:SpatialModel,onChange:(m:SpatialModel)=>v
       }}><b>{rule.id}</b> {actionLabel(rule.kind,'3D',rule.refs.length===1)}<span>{isSpatialDimension(rule.kind)?valueText(rule,model,units):''}{rule.driven?' (ref.)':rule.suppressed?' (off)':''}</span></button>)}
     </details>;
   }
-  return {select,inspect,moveLabel,related,reset,menu,feedback,picks:current?.picks??[]};
+  return {select,startAction,activeAction:edit?.requested??current?.requested,inspect,moveLabel,related,reset,menu,feedback,picks:current?.picks??[]};
 }

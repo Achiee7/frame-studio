@@ -1,4 +1,4 @@
-import {ArrowDown, MoveUpRight, RotateCcw, X} from 'lucide-react';
+import {ArrowDown, GitBranch, MoveUpRight, RotateCcw, X} from 'lucide-react';
 import {beamGroupName} from './model';
 import type {Model} from './model';
 import type {Picked} from './selection';
@@ -20,9 +20,33 @@ export default function ModelTree({model,selected,onSelect,onClose}:Props){
  const families=[...new Set(model.beams.map(beam=>beam.family))];
 
  return <aside data-sketch-surface="tree" className="model-tree-panel" aria-label="Model tree">
-  <header><b>Model tree</b><button aria-label="Close model tree" onClick={onClose}><X size={15}/></button></header>
+  <header><b><GitBranch size={15}/> Model tree</b><button aria-label="Collapse model tree" onClick={onClose}><X size={15}/></button></header>
+  <details className="tree-root" open><summary>Components <small>{model.beams.length+model.nodes.length}</small></summary>
   <details open>
-   <summary>Applied forces <small>{model.loads.length}</small></summary>
+   <summary>Members <small>{model.beams.length} segments</small></summary>
+   {families.map(family=><details key={family} open>
+    <summary>{beamGroupName(model,family)}</summary>
+    {model.beams.filter(beam=>beam.family===family).map(beam=>{
+     const picked:Picked={type:'beam',id:beam.id};
+     return <button key={beam.id} className={active(picked)?'active':''}
+      onClick={e=>pick(picked,e)}>
+      <MoveUpRight size={14}/><span>B{model.beams.indexOf(beam)+1} · {beam.profile}</span>
+     </button>;
+    })}
+   </details>)}
+  </details>
+  <details>
+   <summary>Joints &amp; supports <small>{model.nodes.length}</small></summary>
+   {model.nodes.map((node,index)=>{
+    const picked:Picked={type:'node',id:node.id};
+    return <button key={node.id} className={active(picked)?'active':''} onClick={e=>pick(picked,e)}>
+     <svg width="25" height="29" viewBox="-20 -3 40 45"><SupportGlyph type={node.support}/></svg>N{index+1} · {node.support}
+    </button>;
+   })}
+  </details>
+  </details>
+  <details className="tree-root" open>
+   <summary>Forces <small>{model.loads.length}</small></summary>
    {model.loads.map((load,index)=>{
     const picked:Picked={type:'load',id:load.id};
     const moment=load.type==='moment',distributed=load.type==='distributed';
@@ -38,28 +62,5 @@ export default function ModelTree({model,selected,onSelect,onClose}:Props){
    })}
    {model.loads.length===0&&<small className="model-tree-empty">No applied loads</small>}
   </details>
-  <details open>
-   <summary>Beams <small>{model.beams.length} segments</small></summary>
-   {families.map(family=><details key={family} open>
-    <summary>{beamGroupName(model,family)}</summary>
-    {model.beams.filter(beam=>beam.family===family).map(beam=>{
-     const picked:Picked={type:'beam',id:beam.id};
-     return <button key={beam.id} className={active(picked)?'active':''}
-      onClick={e=>pick(picked,e)}>
-      <MoveUpRight size={14}/><span>B{model.beams.indexOf(beam)+1} · {beam.profile}</span>
-     </button>;
-    })}
-   </details>)}
-  </details>
-  <details>
-   <summary>Nodes &amp; supports <small>{model.nodes.length}</small></summary>
-   {model.nodes.map((node,index)=>{
-    const picked:Picked={type:'node',id:node.id};
-    return <button key={node.id} className={active(picked)?'active':''} onClick={e=>pick(picked,e)}>
-     <svg width="25" height="29" viewBox="-20 -3 40 45"><SupportGlyph type={node.support}/></svg>N{index+1} · {node.support}
-    </button>;
-   })}
-  </details>
-  <p>Ctrl-click two points or members for constraints. Shift-click adds to a selection.</p>
  </aside>;
 }

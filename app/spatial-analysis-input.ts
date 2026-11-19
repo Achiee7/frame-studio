@@ -1,9 +1,12 @@
 import type {SpatialMember, SpatialModel, Vec3} from './spatial-model.ts';
 import type {SectionSpec} from './sections.ts';
+import {validSection} from './sections.ts';
+import {validMassProperties} from './model.ts';
 
 /** kN, m, radians internally; roll is entered in degrees about local x (A to B). */
 export type SpatialSection = {
   name:string; E:number; G:number; A:number; Iy:number; Iz:number; J:number; roll:number;
+  profile?:SectionSpec;
 };
 export type SpatialLoad = {
   id:string; kind:'force'|'moment'|'distributed'; target:'node'|'member'; targetId:string;
@@ -28,7 +31,7 @@ const rolledJ:Record<string,number> = {
 
 export function spatialSectionFromCatalog(section:SectionSpec,roll=0):SpatialSection {
   const g=section.geometry;
-  let J=rolledJ[section.id]*1e-8;
+  let J=section.J??rolledJ[section.id]*1e-8;
   if(!J && g?.shape==='chs') J=2*section.I;
   if(!J && g?.shape==='rhs'){
     // Bredt's single-cell thin-wall formula, integrated along the mean perimeter.
@@ -37,15 +40,27 @@ export function spatialSectionFromCatalog(section:SectionSpec,roll=0):SpatialSec
     const perimeter=2*(b+h)-(8-2*Math.PI)*r;
     J=4*area*area*g.t/perimeter*1e-12;
   }
-  if(!J||!section.Iminor) throw Error('Enter Iy, Iz and the torsion constant J for this custom section.');
+  if(!J && g?.shape==='rectangle'){
+    const a=Math.max(g.b,g.h),b=Math.min(g.b,g.h),ratio=b/a;
+    J=a*b**3*(1/3-.21*ratio*(1-ratio**4/12))*1e-12;
+  }
+  if(!J && g?.shape==='i'){
+    // Rolled, doubly symmetric I section with root fillets (SCI P385).
+    const {b,h,tw,tf,r}=g,web=tw/tf,root=r/tf;
+    const alpha=-.042+.2204*web+.1355*root-.0865*web*root-.0725*web*web;
+    const diameter=((tf+r)**2+(tw/2+r)**2-r*r)/(2*r+tf);
+    if(alpha>=0)J=((2*b*tf**3+(h-2*tf)*tw**3)/3+2*alpha*diameter**4-.42*tf**4)*1e-12;
+  }
+  if(!(J>0)||!Number.isFinite(J)||!section.Iminor) throw Error('Enter Iy, Iz and the torsion constant J in the custom section properties.');
   const E=section.material?.E ?? section.E;
-  return {name:section.name,E,G:E/2.6,A:section.A,Iy:section.I,Iz:section.Iminor,J,roll};
+  return {name:section.name,E,G:section.G??E/2.6,A:section.A,Iy:section.I,Iz:section.Iminor,J,roll,profile:structuredClone(section)};
 }
 
 const finite=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value)&&Math.abs(value)<1e12;
 export function validSpatialSection(section:SpatialSection):boolean{
   return !!section&&typeof section.name==='string'&&section.name.length>0&&section.name.length<=100
-    &&[section.E,section.G,section.A,section.Iy,section.Iz,section.J].every(v=>finite(v)&&v>0)&&finite(section.roll);
+    &&[section.E,section.G,section.A,section.Iy,section.Iz,section.J].every(v=>finite(v)&&v>0)&&finite(section.roll)
+    &&validSection(section.profile)&&validMassProperties(section.profile?.massProperties);
 }
 export function validSpatialAnalysisInput(model:SpatialModel):boolean{
   if(!model.nodes.every(n=>n.spring===undefined||finite(n.spring)&&n.spring>0))return false;
@@ -65,9 +80,14 @@ export function validSpatialAnalysisInput(model:SpatialModel):boolean{
 
 /** Preserve load locations and uniform load intensity when a geometric member is split. */
 export function splitSpatialLoads(loads:SpatialLoad[]|undefined,oldId:string,newId:string,fraction:number){
+  const used=new Set(loads?.map(load=>load.id));
+  let number=1;
   return loads?.flatMap(load=>{
     if(load.target!=='member'||load.targetId!==oldId)return [load];
-    if(load.kind==='distributed')return [load,{...load,id:crypto.randomUUID(),targetId:newId}];
+    if(load.kind==='distributed'){
+      while(used.has('L'+number))number++;
+      return [load,{...load,id:'L'+number++,targetId:newId}];
+    }
     if(load.t<=fraction)return [{...load,t:load.t/fraction}];
     return [{...load,targetId:newId,t:(load.t-fraction)/(1-fraction)}];
   });

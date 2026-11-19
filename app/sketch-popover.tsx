@@ -6,7 +6,7 @@ import type {ActionMode,GeometryPick,SketchAction} from './sketch-actions';
 import './sketch-popover.css';
 
 export type CursorPosition={x:number;y:number};
-export function SketchPopover({at,title,caption,onClose,children}:{at:CursorPosition;title:string;caption?:string;onClose:()=>void;children:ReactNode}) {
+export function SketchPopover({at,title,caption,onClose,children,singlePick=false}:{singlePick?:boolean;at:CursorPosition;title:string;caption?:string;onClose:()=>void;children:ReactNode}) {
   const ref=useRef<HTMLDivElement>(null);
   const [position,setPosition]=useState(at);
   useLayoutEffect(()=>{
@@ -35,6 +35,15 @@ export function SketchPopover({at,title,caption,onClose,children}:{at:CursorPosi
     window.addEventListener('keydown',escape,true);
     return ()=>{document.removeEventListener('pointerdown',outside,true);window.removeEventListener('keydown',escape,true);};
   },[onClose]);
+  useEffect(()=>{
+    if(!singlePick)return;
+    const el=ref.current;
+    const update=(event:KeyboardEvent|PointerEvent)=>el?.classList.toggle('continue-picking',event.ctrlKey||event.metaKey);
+    const reset=()=>el?.classList.remove('continue-picking');
+    window.addEventListener('keydown',update,true);window.addEventListener('keyup',update,true);
+    window.addEventListener('pointermove',update,true);window.addEventListener('blur',reset);
+    return ()=>{window.removeEventListener('keydown',update,true);window.removeEventListener('keyup',update,true);window.removeEventListener('pointermove',update,true);window.removeEventListener('blur',reset);reset();};
+  },[singlePick]);
   return <div className="sketch-cursor-popover" ref={ref} role="dialog" aria-label={title}
     style={{left:position.x,top:position.y}} onPointerDown={e=>e.stopPropagation()}>
     <div className="sketch-popover-head"><strong>{title}</strong><button type="button" aria-label={'Close '+title} onClick={onClose}><X size={14}/></button></div>
@@ -47,7 +56,7 @@ export function SketchActionMenu({at,picks,actions,space,mode,describe,onAction,
   describe:(p:GeometryPick)=>string;onAction:(s:SketchAction)=>void;onClose:()=>void;error?:string
 }) {
   const single=picks.length===1 && picks[0].type==='member';
-  return <SketchPopover at={at} title={mode==='constraint'?'Available constraints':'Dimension'} caption={picks.map(describe).join(' + ')} onClose={onClose}>
+  return <SketchPopover singlePick={single} at={at} title={mode==='constraint'?'Available constraints':'Dimension'} caption={picks.map(describe).join(' + ')} onClose={onClose}>
     <div className="sketch-action-buttons">{actions.map(id=><button key={id} type="button" onClick={()=>onAction(id)}>{actionLabel(id,space,single)}</button>)}</div>
     {!actions.length && <p className="sketch-pick-caption">No additional relation is available for this selection.</p>}
     {single && <small>Pick a second point or member for more options.</small>}

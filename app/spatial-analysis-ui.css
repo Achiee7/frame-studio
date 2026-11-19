@@ -66,6 +66,46 @@
 .sr-alert button {padding:5px 8px;min-height:29px;font-size:11px}
 .sr-alert.sr-empty {color:#42624d;background:#f2f7f2;border-color:#c5d9ca}
 .sr-warnings {background:#fff5e6;color:#785021;padding:6px 14px;font-size:11px}
+.sp-inspector.sp-explorer {display:flex;flex-direction:column;overflow:hidden}
+.sp-explorer .sp-properties {flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
+.sp-component-tree {flex:0 1 auto;max-height:45%;overflow:auto;scrollbar-width:thin;padding:7px 7px 8px;border-bottom:1px solid var(--sp-rule);background:#f7faf7;font-size:11px}
+.sp-component-tree summary {display:flex;align-items:center;gap:5px;list-style:none;cursor:pointer;min-height:28px;color:#345342;font-weight:650}
+.sp-component-tree>header {padding:3px 4px 5px;font-weight:650;color:#365844;font-size:12px}
+.sp-component-tree summary::-webkit-details-marker {display:none}
+.sp-component-tree summary::before {content:'›';display:inline-block;flex:none;width:10px;line-height:1;text-align:center;font-size:17px;color:#7b8c80}
+.sp-component-tree details[open]>summary::before {transform:rotate(90deg)}
+.sp-component-tree summary span {margin-left:auto;padding:0 5px;color:#708475;font-size:10px;font-weight:500}
+.sp-component-tree .sp-tree-branch {padding-left:10px}
+.sp-component-tree .sp-tree-branch>summary {min-height:24px;color:#516858;font-size:10px}
+.sp-component-tree button {display:flex;align-items:center;gap:5px;width:100%;margin:1px 0;padding:3px 4px 3px 14px;min-width:0;min-height:24px;border:0;background:transparent;color:#345342;border-radius:3px;font:inherit;text-align:left}
+.sp-component-tree button:hover,.sp-component-tree button[aria-pressed=true] {background:#deeee2}
+.sp-component-tree button :is(b,small,span) {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-component-tree button b {flex:0 1 auto;font-weight:550}
+.sp-component-tree button svg {flex:0 0 14px}
+.sp-component-tree button small {margin-left:auto;color:#65796b;font-size:10px;font-weight:400}
+.sp-component-tree p {margin:1px 0 4px 18px;font-size:10px;color:#738678}
+.sp-drawing-layers {display:grid;gap:4px}
+.sp-drawing-layers label {display:flex;gap:7px;align-items:center;padding:3px 1px;font:12px/1.4 system-ui,sans-serif}
+.sp-drawing-layers input {width:14px;height:14px;margin:0;accent-color:#247254}
+.sp-browse-sections,.sp-section-assignment button {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:28px;border:1px solid #c8d9cc;border-radius:4px;background:white;color:#285a43;font-size:11px}
+.sp-browse-sections {margin:5px 0;width:100%}
+.sp-section-assignment {display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:6px 14px;border-bottom:1px solid #cadacb;color:#375b44;background:#eef6ee;font-size:12px}
+.sp-section-assignment button {padding:3px 8px}
+.sp-section-assignment [role=alert] {color:#8b382b}
+.sp-section-assignment button:disabled {opacity:.5}
+.sr-member-section {margin-top:10px}
+.sr-member-section .member-section-view {margin:6px 0}
+.sr-ribbon-settings {display:grid;gap:4px;padding:0 4px}
+.sr-ribbon-settings label {display:flex;align-items:center;justify-content:space-between;gap:5px;white-space:nowrap;font-size:10px;color:#58705f}
+.sr-ribbon-settings select {padding:2px;border:1px solid #cbd8cb;border-radius:3px;color:#304e3e;font-size:10px}
+.sr-ribbon-settings input[type=range] {width:76px;accent-color:#357456}
+.sr-ribbon-settings input[type=checkbox] {margin:0;accent-color:#357456}
+@media (max-width:540px){
+  .sp-workspace>.sp-body {flex-direction:row}
+  .sp-inspector.sp-explorer {flex:0 0 clamp(132px,38vw,195px);width:auto;max-height:none;border-right:1px solid var(--sp-rule);border-top:0}
+  .sp-component-tree,.sp-explorer .sp-section {padding-left:6px;padding-right:6px}
+  .sp-explorer .sp-section .sr-field-grid {grid-template-columns:1fr}
+}
 @media (max-width:600px){
   .sr-legend {bottom:6px;left:auto;right:8px;transform:none;max-width:calc(100% - 70px);white-space:normal;line-height:1.3;gap:6px}
   .sr-alert {left:8px;right:8px;bottom:8px}

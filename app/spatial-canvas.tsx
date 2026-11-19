@@ -1,11 +1,12 @@
-import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {memo,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {PointerEvent as ReactPointerEvent,ReactNode} from 'react';
 import {Box,Maximize,ZoomIn,ZoomOut} from 'lucide-react';
 import type {SpatialMember,SpatialNode,Vec3} from './spatial-model';
 import {SupportGlyph} from './support-symbol';
 import {useUnits} from './unit-context';
 import {lengthUnits,settingNumber} from './units';
-import {directions,fitCamera,initialCamera,nearbySpatialCrossing,panCamera,planeAxes,project3D,workplanePoint,zoomCamera} from './spatial-projection';
+import {directions,fitCamera,initialCamera,nearbySpatialCrossing,panCamera,planeAxes,project3D,workplaneGrid,workplanePoint,zoomCamera} from './spatial-projection';
+import {maxGridIntervals,visibleSegment,wheelZoomFactor,zoomButtonFactor} from './drafting-grid';
 import type {CanvasSize,ScreenPoint,SpatialCamera,SpatialPlane,ViewName} from './spatial-projection';
 import './spatial-canvas.css';
 
@@ -13,10 +14,10 @@ export type {SpatialPlane} from './spatial-projection';
 export type SpatialTool = 'select'|'beam'|'strut'|'joint'|'orbit'|'pan'|'dimension'|'constraint';
 export type SpatialSelection = {type:'node'|'member';id:string}|null;
 export type SpatialCanvasProps = {
-  nodes:SpatialNode[];members:SpatialMember[];tool:SpatialTool;plane:SpatialPlane;offset:number;snap:number;
+  nodes:SpatialNode[];members:SpatialMember[];tool:SpatialTool;plane:SpatialPlane;offset:number;snap:number|'auto';
   start?:Vec3|null;selection?:SpatialSelection;showGrid?:boolean;showNames?:boolean;
   onPoint:(point:Vec3,nodeId?:string)=>void;
-  onSelect:(selection:SpatialSelection)=>void;
+  onSelect:(selection:SpatialSelection,point?:Vec3)=>void;
   highlights?:NonNullable<SpatialSelection>[];
   onSketchPick?:(selection:SpatialSelection,at:ScreenPoint,shortcut:boolean)=>void;
   renderOverlay?:(project:(p:Vec3)=>ScreenPoint,viewport:CanvasSize)=>ReactNode;
@@ -30,24 +31,13 @@ const axes=['x','y','z'] as const;
 const centerOf=(s:CanvasSize)=>({x:s.width/2,y:s.height/2});
 const lengthOf=(a:Vec3,b:Vec3)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 
-function gridStep(minimum:number) {
-  const decade=10**Math.floor(Math.log10(minimum));
-  return ([1,2,5,10].find(factor=>factor*decade>=minimum)??10)*decade;
-}
-function PlaneGrid({camera,size,plane,offset,snap}:{camera:SpatialCamera;size:CanvasSize;plane:SpatialPlane;offset:number;snap:number}) {
-  const corners=[{x:0,y:0},{x:size.width,y:0},{x:0,y:size.height},{x:size.width,y:size.height}].map(
-    p=>workplanePoint(p,camera,size,plane,offset)
-  );
-  if(corners.some(p=>!p))return null;
+const PlaneGrid=memo(function PlaneGrid({camera,size,plane,offset,grid}:{camera:SpatialCamera;size:CanvasSize;plane:SpatialPlane;offset:number;grid:NonNullable<ReturnType<typeof workplaneGrid>>}) {
   const [u,v,n]=planeAxes[plane];
-  const us=corners.map(p=>p![u]),vs=corners.map(p=>p![v]);
-  const lowU=Math.min(...us),highU=Math.max(...us),lowV=Math.min(...vs),highV=Math.max(...vs);
-  const ideal=Math.max(26*camera.height/size.height,(highU-lowU)/90,(highV-lowV)/90);
-  const step=snap>0?Math.max(1,gridStep(ideal/snap))*snap:gridStep(ideal);
+  const {lowU,highU,lowV,highV,step}=grid;
   const lines=[];
   for(const axis of [u,v]){
     const other=axis===u?v:u,low=axis===u?lowU:lowV,high=axis===u?highU:highV;
-    const first=Math.ceil(low/step),count=Math.min(92,Math.max(0,Math.floor(high/step)-first+1));
+    const first=Math.ceil(low/step),count=Math.min(maxGridIntervals+1,Math.max(0,Math.floor(high/step)-first+1));
     for(let i=0;i<count;i++){
       const j=first+i;
       const p={x:0,y:0,z:0};p[n]=offset;p[axis]=j*step;p[other]=other===u?lowU:lowV;
@@ -57,8 +47,8 @@ function PlaneGrid({camera,size,plane,offset,snap}:{camera:SpatialCamera;size:Ca
         stroke={j===0?axisColor[other]:j%5===0?'#c8d8ce':'#dee8e1'} opacity={j===0?.67:j%5===0?.85:.8}/>);
     }
   }
-  return <g aria-hidden="true" pointerEvents="none">{lines}</g>;
-}
+  return <g aria-hidden="true" data-grid-step={step} pointerEvents="none">{lines}</g>;
+});
 
 function ViewAxes({camera}:{camera:SpatialCamera}){
   const size={width:86,height:80},view={...camera,target:{x:0,y:0,z:0},height:3},o=centerOf(size);
@@ -82,6 +72,8 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
   const [picker,setPicker]=useState<{screen:ScreenPoint;hits:Hit[];shortcut:boolean}|null>(null);
   const [dragging,setDragging]=useState(false);
   const units=useUnits(),unit=units.length;
+  const grid=useMemo(()=>workplaneGrid(camera,size,plane,offset,lengthUnits[unit]),[camera,size,plane,offset,unit]);
+  const snapStep=snap==='auto'?(grid?.step??0):snap;
   const number=(v:number)=>settingNumber(v/lengthUnits[unit],units,false);
   const coordinates=(p:Vec3)=>axes.map(axis=>axis.toUpperCase()+' '+number(p[axis])).join('  ·  ')+' '+unit;
   const sketchTool=tool==='constraint'||tool==='dimension';
@@ -111,9 +103,8 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     function wheel(e:WheelEvent){
       e.preventDefault();
       const r=el!.getBoundingClientRect();
-      const px=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?r.height:1);
       setPicker(null);
-      setCamera(c=>zoomCamera(c,{width:r.width,height:r.height},{x:e.clientX-r.left,y:e.clientY-r.top},Math.exp(Math.max(-2,Math.min(2,px*.0015)))));
+      setCamera(c=>zoomCamera(c,{width:r.width,height:r.height},{x:e.clientX-r.left,y:e.clientY-r.top},1/wheelZoomFactor(e.deltaY,e.deltaMode,r.height)));
     }
     el.addEventListener('wheel',wheel,{passive:false});
     return ()=>el.removeEventListener('wheel',wheel);
@@ -126,7 +117,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     return a&&b?[{member,a,b,depth:(a.screen.depth+b.screen.depth)/2}]:[];
   }).sort((a,b)=>a.depth-b.depth);
   const cameraView=(Object.keys(directions) as ViewName[]).find(name=>Math.cos(camera.yaw-directions[name].yaw)>.999999&&Math.abs(camera.pitch-directions[name].pitch)<.001);
-  const planeEdgeOn=!workplanePoint(centerOf(size),camera,size,plane,offset);
+  const planeEdgeOn=!grid;
 
   function hitsAt(p:ScreenPoint,shortcut=false):Hit[]{
     const hits:Hit[]=[];
@@ -166,7 +157,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     }
     hits.sort((a,b)=>a.distance-b.distance||b.depth-a.depth);
     const near=hits.filter(hit=>hit.distance<=hits[0].distance+2);
-    const planePoint=workplanePoint(p,camera,size,plane,offset,snap);
+    const planePoint=workplanePoint(p,camera,size,plane,offset,snapStep);
     // Looking straight down on two storeys can put a new upper joint and an
     // existing lower joint on the same pixel. Offer both physical locations.
     const normal=planeAxes[plane][2];
@@ -179,6 +170,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
   const target=hover.length===1?hover[0]:null;
   const targetScreen=target&&project3D(target.point,camera,size);
   const startScreen=start&&project3D(start,camera,size);
+  const preview=startScreen&&targetScreen&&visibleSegment(startScreen,targetScreen,size.width,size.height);
   function choose(hit:Hit|undefined,screen:ScreenPoint,shortcut:boolean){
     setPicker(null);
     if(onSketchPick && (shortcut||sketchTool)) {
@@ -187,7 +179,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       onSketchPick(ref,{x:rect.left+screen.x,y:rect.top+screen.y},shortcut);
       return;
     }
-    if(tool==='select')onSelect(hit&&(hit.type==='node'||hit.type==='member')?{type:hit.type,id:hit.id}:null);
+    if(tool==='select')onSelect(hit&&(hit.type==='node'||hit.type==='member')?{type:hit.type,id:hit.id}:null,hit?.point);
     if(drawing&&hit){
       if(tool==='joint'&&hit.type==='member'&&onMemberPoint)onMemberPoint(hit.id,hit.point);
       else onPoint(hit.point,hit.type==='node'?hit.id:undefined);
@@ -234,19 +226,21 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       onPointerCancel={()=>{gesture.current=null;setDragging(false);setPointer(null);}}
       onPointerLeave={()=>{if(!gesture.current)setPointer(null);}} onContextMenu={e=>e.preventDefault()}
       onKeyDown={e=>{if(e.key==='Escape')setPicker(null);if(e.key.toLowerCase()==='f'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fit();}}}>
-      {showGrid&&<PlaneGrid camera={camera} size={size} plane={plane} offset={offset} snap={snap}/>}
+      {showGrid&&grid&&<PlaneGrid camera={camera} size={size} plane={plane} offset={offset} grid={grid}/>}
       {segments.map(({member,a,b})=>{
+        const line=visibleSegment(a.screen,b.screen,size.width,size.height);
+        if(!line)return null;
         const active=selection?.type==='member'&&selection.id===member.id||highlights.some(p=>p.type==='member'&&p.id===member.id);
         const highlighted=hover.some(h=>h.type==='member'&&h.id===member.id);
         const color=active?'#b76520':highlighted?'#16745d':member.kind==='strut'?'#526c5e':'#284c41';
         return <g key={member.id} data-member={member.id} aria-label={member.id+' '+member.kind}>
-          {(active||highlighted)&&<line x1={a.screen.x} y1={a.screen.y} x2={b.screen.x} y2={b.screen.y} stroke={color} opacity=".18" strokeWidth="8" strokeLinecap="round"/>}
-          <line x1={a.screen.x} y1={a.screen.y} x2={b.screen.x} y2={b.screen.y} stroke={color} strokeWidth={2.7} strokeLinecap="round" strokeDasharray={member.kind==='strut'?'8 4':undefined}/>
+          {(active||highlighted)&&<line {...line} stroke={color} opacity=".18" strokeWidth="8" strokeLinecap="round"/>}
+          <line {...line} stroke={color} strokeWidth={2.7} strokeLinecap="round" strokeDasharray={member.kind==='strut'?'8 4':undefined}/>
           {showNames&&<text className="sp-member-label" x={(a.screen.x+b.screen.x)/2} y={(a.screen.y+b.screen.y)/2-7} textAnchor="middle">{member.id}</text>}
         </g>;
       })}
       {startScreen&&drawing&&<g stroke="#bd732a" fill="none">
-        {targetScreen&&<line x1={startScreen.x} y1={startScreen.y} x2={targetScreen.x} y2={targetScreen.y} strokeWidth="2" strokeDasharray="6 4"/>}
+        {preview&&<line {...preview} strokeWidth="2" strokeDasharray="6 4"/>}
         <circle cx={startScreen.x} cy={startScreen.y} r="6" strokeWidth="2"/>
       </g>}
       {projected.map(({node,screen})=>{
@@ -280,8 +274,8 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
         {!cameraView&&<option value="" disabled>Orbit view</option>}
         {(Object.keys(directions) as ViewName[]).map(name=><option key={name}>{name}</option>)}
       </select>
-      <button type="button" title="Zoom out" aria-label="Zoom out in 3D" onClick={()=>zoom(1.25)}><ZoomOut size={16}/></button>
-      <button type="button" title="Zoom in" aria-label="Zoom in in 3D" onClick={()=>zoom(.8)}><ZoomIn size={16}/></button>
+      <button type="button" title="Zoom out" aria-label="Zoom out in 3D" onClick={()=>zoom(zoomButtonFactor)}><ZoomOut size={16}/></button>
+      <button type="button" title="Zoom in" aria-label="Zoom in in 3D" onClick={()=>zoom(1/zoomButtonFactor)}><ZoomIn size={16}/></button>
       <button type="button" title="Fit model (F)" aria-label="Fit 3D model" onClick={fit}><Maximize size={15}/></button>
     </div>
     <ViewAxes camera={camera}/>

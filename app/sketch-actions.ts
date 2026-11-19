@@ -40,6 +40,24 @@ export function availableActions(space:'2D'|'3D', mode:ActionMode, picks:Geometr
     if (line.a===points[0].id || line.b===points[0].id) return [];
     return mode==='dimension'?['offset']:['pointOnMember','midpoint'];
   }
-  if (lines.length===1) return mode==='dimension'?['length']:axes;
+  if (lines.length===1) return mode==='dimension'?(space==='3D'?distances:['length']):axes;
   return [];
+}
+
+/** Resolve a named 3D ribbon command against existing or newly picked geometry. */
+export function spatialCommandSelection(action:SketchAction,mode:ActionMode,picks:GeometryPick[],members:Member[]) {
+  const mixed=picks.length===2&&picks[0].type!==picks[1].type;
+  const resolved=action==='connect'&&mixed?'pointOnMember':action;
+  if(availableActions('3D',mode,picks,members).includes(resolved))return {picks,action:resolved,complete:true,error:''};
+  const twoMembers=['equal','parallel','perpendicular','collinear','angle'].includes(action);
+  const single=picks.find(p=>!twoMembers||p.type==='member');
+  const retained=single?[single]:[];
+  let error='';
+  if(picks.length>retained.length){
+    if(twoMembers)error='Pick two different members.';
+    else if(action==='connect')error='Pick two distinct joints or a joint and a member away from its end.';
+    else if(['midpoint','pointOnMember','offset'].includes(action))error='Pick a joint and a member away from its end.';
+    else error='Pick a member or two distinct joints.';
+  }
+  return {picks:retained,action,complete:false,error};
 }

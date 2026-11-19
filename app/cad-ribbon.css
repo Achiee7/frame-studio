@@ -1,0 +1,24 @@
+.cad-command-ribbon {position:relative;flex:0 0 auto;min-width:0;z-index:19;background:white;color:#263e35}
+.cad-ribbon-body {display:flex;align-items:stretch;min-width:0;border-bottom:1px solid #c6d4cc;background:linear-gradient(#fff,#f8faf8)}
+.auto-hide .cad-ribbon-body {position:absolute;top:100%;left:0;right:0;box-shadow:0 5px 12px #233e2f1c}
+.cad-ribbon-scroll {display:flex;align-items:stretch;gap:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding:5px 3px 4px 8px;flex:1;min-width:0}
+.cad-ribbon-group {flex:none;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:0 8px;gap:2px;border-right:1px solid #d3ded7}
+.cad-ribbon-group:last-child {border-right:0}
+.ribbon-group-items {display:flex;align-items:center;justify-content:center;gap:2px;flex:1}
+.cad-ribbon-group.compact .ribbon-group-items {display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,24px);gap:1px 3px}
+.ribbon-group-label {font-size:10px;font-weight:600;color:#637568;line-height:15px;letter-spacing:.025em}
+button.ribbon-tool,button.ribbon-pin,button.ribbon-reveal {font:inherit;cursor:pointer;border:1px solid transparent;background:transparent;color:inherit;border-radius:4px}
+button.ribbon-tool {display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:42px;height:53px;padding:3px 5px;gap:4px;color:#28664f;white-space:nowrap}
+button.ribbon-tool span {font-size:11px;line-height:14px;color:#243d32}
+button.ribbon-tool.small {height:24px;min-width:28px;padding:2px 4px}
+.cad-ribbon-group[aria-label=Forces] .ribbon-tool {color:#ad531e}
+.cad-ribbon-group[aria-label=Constraints] .ribbon-tool,.cad-ribbon-group[aria-label=Dimension] .ribbon-tool,.cad-ribbon-group[aria-label=Dimensions] .ribbon-tool {color:#4d678d}
+button.ribbon-tool:hover,button.ribbon-pin:hover,button.ribbon-reveal:hover {background:#eaf2ed;border-color:#cfdfd4}
+button.ribbon-tool[aria-pressed=true] {background:#dcefe4;border-color:#94baa4;color:#15583a}
+button.ribbon-tool:focus-visible,.ribbon-pin:focus-visible,.ribbon-reveal:focus-visible {outline:2px solid #25765c;outline-offset:-2px}
+button.ribbon-tool:disabled {opacity:.42;cursor:default}
+button.ribbon-pin {align-self:flex-start;margin:5px 6px 0 0;padding:5px;color:#536c5e}
+button.ribbon-reveal {display:flex;align-items:center;gap:7px;width:100%;padding:4px 18px;text-align:left;font-size:11px;border-bottom:1px solid #c6d4cc;border-radius:0}
+.cad-tool-tip {z-index:1100;position:fixed;width:max-content;max-width:min(250px,90vw);pointer-events:none;background:#233d32;color:white;border:1px solid #3d5a4a;border-radius:5px;padding:9px 12px;font:12px/1.45 system-ui,sans-serif;box-shadow:0 4px 12px #1b39252b}
+.cad-tool-tip b {display:block;font-size:13px;margin-bottom:3px}
+@media(max-width:800px){.cad-ribbon-group{padding:0 5px}.cad-ribbon-scroll{padding-left:3px}button.ribbon-tool {height:48px;min-width:36px;padding:2px 4px}button.ribbon-tool span{font-size:10px}}

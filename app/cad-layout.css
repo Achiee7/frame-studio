@@ -1,0 +1,46 @@
+.sketch-cursor-popover.continue-picking {pointer-events:none;opacity:.35}
+.ribbon-workspace {--tree-width:0px;--inspector-width:0px}
+.studio .workspace.cad-workspace.ribbon-workspace {
+  position:relative;
+  display:grid;
+  grid-template-columns:var(--tree-width) minmax(0,1fr) var(--inspector-width);
+  grid-template-rows:minmax(0,1fr);
+}
+.studio .ribbon-workspace.with-tree {--tree-width:clamp(174px,18vw,252px)}
+.studio .ribbon-workspace.docked {--inspector-width:clamp(215px,23vw,325px)}
+.studio .ribbon-workspace .canvas-area {grid-column:2;grid-row:1;width:100%;overflow:hidden;min-width:0}
+.studio .ribbon-workspace .model-tree-panel {
+  position:relative;inset:auto;grid-column:1;grid-row:1;z-index:2;min-width:0;width:auto;height:100%;max-height:none;
+  background:#fbfcfb;border:0;border-right:1px solid #cedbd1;border-radius:0;box-shadow:none;padding:0 7px 8px;overflow:auto;color:#2f4939
+}
+.ribbon-workspace .model-tree-panel>header {position:sticky;top:0;z-index:1;background:#f4f7f4;border-bottom:1px solid #d7e2da;margin:0 -7px 5px;padding:10px 12px}
+.ribbon-workspace .model-tree-panel>header b {display:flex;align-items:center;gap:7px;font-size:12px}
+.ribbon-workspace .model-tree-panel summary {padding:7px 4px;font-size:11px}
+.ribbon-workspace .model-tree-panel .tree-root {border-bottom:1px solid #e1e9e3;padding:3px 0 6px}
+.ribbon-workspace .model-tree-panel .tree-root>summary {font-weight:650;font-size:12px}
+.ribbon-workspace .model-tree-panel details>button {display:flex;align-items:center;gap:7px;padding:6px 7px;line-height:1.3}
+.ribbon-workspace .model-tree-panel button:hover,.ribbon-workspace .model-tree-panel summary:hover {background:#eef4f0}
+.ribbon-workspace .model-tree-panel svg {flex:none}
+.studio .ribbon-workspace .right-panel.floating-panel:not(.is-docked) {left:calc(var(--tree-width) + 9px);right:auto;top:9px;width:min(300px,calc(100% - var(--tree-width) - 18px));max-height:calc(100% - 20px)}
+.studio .ribbon-workspace .canvas-area .right-panel.floating-panel {left:9px;width:min(300px,calc(100% - 18px));top:48px;max-height:calc(100% - 65px)}
+.studio .ribbon-workspace.docked .right-panel.is-docked {position:relative;grid-column:3;grid-row:1;inset:auto;width:auto;height:100%;max-height:none;border:0;border-left:1px solid #d3ddd5;border-radius:0;box-shadow:none}
+.ribbon-workspace .canvas-top {top:6px;left:6px;right:auto}
+.ribbon-workspace .canvas-top .visibility-bar {top:0;left:0}
+.ribbon-workspace .material-status-pill {top:8px;left:10px;max-width:calc(100% - 20px);padding:6px 9px}
+.ribbon-inputs {display:grid;gap:2px 7px;align-items:center;padding:0 3px}
+.ribbon-inputs label {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;color:#44594c;font-size:10px;line-height:1.15}
+.ribbon-inputs select {width:142px;min-height:0;max-width:150px;margin:0;padding:1px 3px;border:1px solid #cbd9cf;border-radius:3px;color:#273f31;background:white;font:inherit;line-height:1.1}
+.ribbon-scale {display:grid;gap:3px;justify-items:center}
+.ribbon-scale input {width:85px;accent-color:#2b684f}
+.ribbon-scale button,.section-target-bar button {border:1px solid #bacfc1;color:#234d34;background:white;padding:3px 7px;border-radius:4px;font-size:11px}
+.section-target-bar {position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:16;display:flex;align-items:center;gap:9px;flex-wrap:wrap;width:max-content;max-width:94%;background:white;border:1px solid #cbdcd0;box-shadow:0 3px 16px #23473318;border-radius:6px;padding:9px 13px;font-size:12px}
+.section-target-bar button:first-of-type {background:#28664f;color:white}
+.section-target-bar button:disabled {opacity:.45}
+@media(max-width:660px){
+ .studio .ribbon-workspace.with-tree {--tree-width:clamp(107px,29vw,164px)}
+ .ribbon-workspace .model-tree-panel>header {padding:7px}
+ .ribbon-workspace .model-tree-panel details {padding-left:4px}
+ .studio .ribbon-workspace.docked {--inspector-width:0px}
+ .studio .ribbon-workspace.docked .right-panel.is-docked {position:absolute;right:0;top:0;width:min(305px,94%);z-index:16}
+ .ribbon-workspace .model-tree-panel .tree-root>summary {font-size:11px}
+}

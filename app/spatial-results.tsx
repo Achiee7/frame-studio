@@ -1,12 +1,20 @@
-import {useMemo,useState} from 'react';
+import {useMemo,useRef,useState} from 'react';
 import type {ComponentType} from 'react';
-import {Activity,AlertTriangle,ArrowDownUp,ArrowLeft,ArrowLeftRight,ChartSpline,Check,CircleDot,Eye,GitBranch,Hand,MousePointer2,Orbit,PanelLeftClose,PanelLeftOpen,RotateCw,TrendingUp} from 'lucide-react';
+import {Activity,AlertTriangle,ArrowDownUp,ArrowLeft,ArrowLeftRight,ChartSpline,Check,CircleDot,Eye,GitBranch,Hand,ListTree,MousePointer2,Orbit,RotateCw,Settings2,TrendingUp} from 'lucide-react';
 import {SpatialCanvas} from './spatial-canvas';
 import type {SpatialSelection} from './spatial-canvas';
 import {useSpatialAnalysis} from './spatial-analysis-hook';
 import type {SpatialResult,SpatialSample} from './spatial-analysis';
 import type {SpatialModel,Vec3} from './spatial-model';
 import {SpatialAnalysisInspector} from './spatial-results-inspector';
+import type {SpatialLoadRequest} from './spatial-results-inspector';
+import type {SpatialLoad} from './spatial-analysis-input';
+import SpatialComponentTree from './spatial-component-tree';
+import {CadRibbon,RibbonGroup,RibbonTool} from './cad-ribbon';
+import {useSpatialLayers} from './spatial-model-ribbon';
+import {useSpatialSections} from './spatial-section-editor';
+import {useSpatialSketch} from './use-spatial-sketch';
+import {SpatialRuleLayer} from './spatial-rule-view';
 import {SpatialLoadOverlay,SpatialReactionOverlay,SpatialStationAxes,addScaled,magnitude} from './spatial-loads-view';
 import type {Project3D} from './spatial-loads-view';
 import {useUnits} from './unit-context';
@@ -21,9 +29,9 @@ type Mode='reactions'|'displacement'|'axial'|'shear'|'bending'|'torsion';
 type Component='N'|'Vy'|'Vz'|'T'|'My'|'Mz';
 type Field=Component|'u';
 const modes:{id:Mode;name:string;icon:ComponentType<{size?:number}>}[]=[
-  {id:'reactions',name:'Reactions',icon:ArrowDownUp},{id:'displacement',name:'Deflection',icon:ChartSpline},
+  {id:'reactions',name:'Reactions',icon:ArrowDownUp},
   {id:'axial',name:'Axial force',icon:ArrowLeftRight},{id:'shear',name:'Shear force',icon:TrendingUp},
-  {id:'bending',name:'Bending',icon:Activity},{id:'torsion',name:'Torsion',icon:RotateCw}
+  {id:'bending',name:'Bending moment',icon:Activity},{id:'displacement',name:'Deflection',icon:ChartSpline},{id:'torsion',name:'Torsion',icon:RotateCw}
 ];
 const symbols:Record<Field,string>={N:'N',Vy:'Vᵧ',Vz:'Vz',T:'T',My:'Mᵧ',Mz:'Mz',u:'|u|'};
 const axes=['x','y','z'] as const;
@@ -141,7 +149,12 @@ export default function SpatialResults({model,onBack,onChange}:ResultsProps){
   const [selection,setSelection]=useState<SpatialSelection>(null),[panel,setPanel]=useState(true);
   const [station,setStation]=useState(0),[localAxes,setLocalAxes]=useState(true);
   const [nav,setNav]=useState<'select'|'orbit'|'pan'>('select'),[scale,setScale]=useState(1);
-  const [trueScale,setTrueScale]=useState(false),[displayOpen,setDisplayOpen]=useState(false);
+  const [trueScale,setTrueScale]=useState(false),layers=useSpatialLayers();
+  const [request,setRequest]=useState<SpatialLoadRequest|null>(null);
+  const scope=useRef<HTMLDetailsElement>(null);
+  const sections=useSpatialSections(model,selection,onChange);
+  const sketch=useSpatialSketch(model,onChange??(()=>{}));
+  const [dimensions,setDimensions]=useState(true),[constraints,setConstraints]=useState(false);
   const [grid,setGrid]=useState(true),[names,setNames]=useState(true),[loads,setLoads]=useState(true),[values,setValues]=useState(true);
   const preparation=!model.members.length?'Draw at least one beam or strut in 3D-model to analyse a frame.'
     :!model.loads?.some(l=>magnitude(l.vector)>0)?'Select a joint or member in 3D-model and choose Add load.':'';
@@ -156,26 +169,47 @@ export default function SpatialResults({model,onBack,onChange}:ResultsProps){
   const reaction=selectedNode&&result?.reactions.find(n=>n.id===selectedNode.id);
   const reactionPeak=result?.reactions.reduce<SpatialResult['reactions'][number]|undefined>((best,r)=>!best||magnitude(r.force)>magnitude(best.force)?r:best,undefined);
   const momentPeak=result?.reactions.reduce<SpatialResult['reactions'][number]|undefined>((best,r)=>!best||magnitude(r.moment)>magnitude(best.moment)?r:best,undefined);
-  function select(item:SpatialSelection){setSelection(item);setStation(0);if(item)setPanel(true);}
+  function select(item:SpatialSelection){
+    if(sections.bulk){if(item?.type==='member')sections.pick(item.id);return;}
+    setSelection(item);setRequest(null);setStation(0);if(item)setPanel(true);
+  }
+  function editLoad(load:SpatialLoad){
+    if(sections.bulk)return;
+    select({type:load.target,id:load.targetId});setRequest({target:load.target,targetId:load.targetId,kind:load.kind,editId:load.id});
+  }
   function inspectPeak(peak:Peak){
     select({type:'member',id:peak.member});
     const member=result?.members.find(m=>m.id===peak.member);
     if(member)setStation(member.samples.indexOf(peak.sample));
   }
   return <section className="sp-workspace sr-workspace" aria-label="3D structural results">
-    <div className="sp-toolbar" role="toolbar" aria-label="3D result view">
-      <button className="sp-pane-switch" aria-label={panel?'Hide 3D result options':'Show 3D result options'} aria-expanded={panel} onClick={()=>setPanel(!panel)}>{panel?<PanelLeftClose size={16}/>:<PanelLeftOpen size={16}/>}</button>
-      {([{key:'select',title:'Select',icon:MousePointer2},{key:'orbit',title:'Orbit',icon:Orbit},{key:'pan',title:'Pan',icon:Hand}] as const).map(item=><button key={item.key} aria-pressed={nav===item.key} onClick={()=>setNav(item.key)}><item.icon size={16}/>{item.title}</button>)}
-      <div className="sp-visibility"><button aria-label="3D result display options" aria-expanded={displayOpen} onClick={()=>setDisplayOpen(!displayOpen)}><Eye size={16}/></button>
-        {displayOpen&&<div className="sp-visibility-menu">{[{name:'Grid',value:grid,set:setGrid},{name:'Joint and member names',value:names,set:setNames},{name:'Applied loads',value:loads,set:setLoads},{name:'Result values',value:values,set:setValues},{name:'Selected member axes',value:localAxes,set:setLocalAxes}].map(o=><label key={o.name}><input type="checkbox" checked={o.value} onChange={e=>o.set(e.target.checked)}/>{o.name}</label>)}</div>}
-      </div>
-    </div>
+    <CadRibbon label="3D results tools">
+      <RibbonGroup label="View" compact>
+        <RibbonTool small label="Select" icon={MousePointer2} description="Inspect a joint or member." active={nav==='select'} onClick={()=>setNav('select')}/>
+        <RibbonTool small label="Pan" icon={Hand} description="Pan across the drawing." active={nav==='pan'} onClick={()=>setNav('pan')}/>
+        <RibbonTool label="Model tree" icon={ListTree} small description="Show or hide components, forces and result details." active={panel} onClick={()=>setPanel(!panel)}/>
+        <RibbonTool label="Visibility options" icon={Eye} small description="Set visibility of result labels, grid, geometry names and applied forces." active={layers.open} onClick={layers.toggle}/>
+        <RibbonTool small label="Orbit" icon={Orbit} description="Rotate the view around the model." active={nav==='orbit'} onClick={()=>setNav('orbit')}/>
+      </RibbonGroup>
+      <RibbonGroup label="Results">{modes.map(item=><RibbonTool key={item.id} label={item.name} icon={item.icon} active={mode===item.id}
+        description={({reactions:'Show support forces and moments in global XYZ.',displacement:'Inspect the displaced shape and magnitude.',
+          axial:'View axial force along each member.',shear:'Switch between the two local shear components.',bending:'Switch between the two local bending moments.',torsion:'Inspect torque about the member axis.'})[item.id]}
+        onClick={()=>{setMode(item.id);setPanel(true);}}/>)}</RibbonGroup>
+      {mode!=='reactions'&&<RibbonGroup label="Diagram"><div className="sr-ribbon-settings">
+        {(mode==='shear'||mode==='bending')&&<label>Component<select aria-label="Local component" value={direction} onChange={e=>setDirection(e.target.value as 'y'|'z')}>
+          {(['y','z'] as const).map(d=><option key={d} value={d}>{mode==='shear'?'V':'M'}{d} · local {d}</option>)}</select></label>}
+        <label>{mode==='displacement'?'Magnification':'Diagram height'}<input aria-label="3D diagram scale" type="range" min=".25" max="2.5" step=".05"
+          value={scale} disabled={mode==='displacement'&&trueScale} onChange={e=>setScale(+e.target.value)}/></label>
+        {mode==='displacement'&&<label><input type="checkbox" checked={trueScale} onChange={e=>setTrueScale(e.target.checked)}/>Show true displacement (1×)</label>}
+      </div></RibbonGroup>}
+      <RibbonGroup label="Review"><RibbonTool label="Analysis details" icon={Settings2} description="Inspect the 3D elastic model assumptions and equilibrium."
+        onClick={()=>{setPanel(true);requestAnimationFrame(()=>{if(scope.current){scope.current.open=true;scope.current.scrollIntoView({block:'nearest'});}});}}/></RibbonGroup>
+    </CadRibbon>
+    {sections.selectionBar}
     <div className="sp-body">
-      {panel&&<aside className="sp-inspector sr-inspector" aria-label="3D result options">
-        <section className="sp-section"><div className="sp-heading"><h2><Activity/>3D results</h2></div>
-          <div className="sr-modes" role="group" aria-label="3D result diagrams">{modes.map(item=><button key={item.id} className={mode===item.id?'active':''} aria-pressed={mode===item.id} onClick={()=>setMode(item.id)}><item.icon size={15}/>{item.name}</button>)}</div>
-          {(mode==='shear'||mode==='bending')&&<div className="sr-components" role="group" aria-label="Local component">
-            {(['y','z'] as const).map(d=><button key={d} aria-pressed={d===direction} onClick={()=>setDirection(d)}>{mode==='shear'?'V':'M'}{d} · local {d}</button>)}</div>}
+      {panel&&<aside className="sp-inspector sr-inspector sp-explorer" aria-label="3D result options">
+        <SpatialComponentTree model={model} selected={selection} selectedLoad={request?.editId} highlightedMembers={sections.chosen} onPick={p=>select(p)} onLoad={editLoad}/>
+        <section className="sp-section sp-properties"><div className="sp-heading"><h2><Activity/>{modes.find(item=>item.id===mode)?.name}</h2></div>
           {result&&<div className="sr-peak">
             <span>{mode==='reactions'?'Largest reaction force':mode==='displacement'?'Peak displacement':'Peak |'+symbols[field]+'|'}</span>
             <b>{mode==='reactions'?fmt(reactionPeak?magnitude(reactionPeak.force):0,'force',units):fmt(Math.abs(peak?.value??0),kind(field),units)}</b>
@@ -185,9 +219,6 @@ export default function SpatialResults({model,onBack,onChange}:ResultsProps){
           {mode==='reactions'&&momentPeak&&magnitude(momentPeak.moment)>0&&<div className="sr-moment-peak">
             <span>Largest reaction moment</span><button onClick={()=>select({type:'node',id:momentPeak.id})}>{fmt(magnitude(momentPeak.moment),'moment',units)} · {momentPeak.id}</button>
           </div>}
-          {result&&mode!=='reactions'&&<><label className="sr-scale">{mode==='displacement'?'Deflection magnification':'Diagram height'}
-            <input aria-label="3D diagram scale" type="range" min=".25" max="2.5" step=".05" value={scale} disabled={mode==='displacement'&&trueScale} onChange={e=>setScale(+e.target.value)}/>
-          </label>{mode==='displacement'?<label className="sp-check"><input type="checkbox" checked={trueScale} onChange={e=>setTrueScale(e.target.checked)}/>Show true displacement (1×)</label>:<small>Signed ordinates are drawn across each member in the current view.</small>}</>}
           {selectedMember&&<StationInspector member={selectedMember} station={station} setStation={setStation} units={units}/>}
           {selectedNode&&<section className="sr-detail">
             <h3><CircleDot size={14}/>Joint {selectedNode.id}</h3>
@@ -195,24 +226,28 @@ export default function SpatialResults({model,onBack,onChange}:ResultsProps){
             <h4>Displacement</h4><VectorValues value={selectedNode.displacement} prefix="u" type="deflection" units={units}/>
             {selectedNode.rotation&&<details><summary>Rotation</summary><VectorValues value={selectedNode.rotation} prefix="θ" type="rad" units={units}/></details>}
           </section>}
-          {onChange&&selection&&<details className="sr-adjust"><summary>Adjust model inputs</summary><SpatialAnalysisInspector model={model} selection={selection} onChange={onChange}/></details>}
+          {onChange&&selection&&<details className="sr-adjust" open={request?true:undefined}><summary>Adjust model inputs</summary>
+            <SpatialAnalysisInspector model={model} selection={selection} sections={sections} request={request} allowCreate={false} onDone={()=>setRequest(null)} onChange={onChange}/></details>}
           {result&&<details className="sr-equilibrium"><summary><Check size={14}/>Equilibrium residuals</summary>
             <VectorValues value={result.equilibrium.force} prefix="ΣF" type="force" units={units}/>
             <VectorValues value={result.equilibrium.moment} prefix="ΣM" type="moment" units={units}/><small>Global forces and moments about the sketch origin.</small>
           </details>}
-          <details className="sr-equilibrium"><summary>Calculation scope</summary>
+          <details ref={scope} className="sr-equilibrium"><summary>Calculation scope</summary>
             <small>The 3D solver uses linear elastic, small-displacement beam and strut theory. Yielding, permanent set, buckling and connection capacity require separate checks.</small>
           </details>
         </section>
       </aside>}
       <div className="sp-viewport">
-        <SpatialCanvas nodes={model.nodes} members={model.members} tool={nav} plane="XY" offset={0} snap={0} selection={selection} showGrid={grid} showNames={names} onPoint={()=>{}} onSelect={select}
+        <SpatialCanvas nodes={model.nodes} members={model.members} tool={sections.bulk?'select':nav} plane="XY" offset={0} snap={0} selection={selection}
+          highlights={sections.chosen.map(id=>({type:'member',id}))} showGrid={grid} showNames={names} onPoint={()=>{}} onSelect={select}
           renderOverlay={project=><>{loads&&<SpatialLoadOverlay model={model} project={project} labels={values}/>}
             {result&&(mode==='reactions'?<SpatialReactionOverlay model={model} result={result} project={project} labels={values}/>:field==='u'?
               <DeflectedFrame project={project} result={result} factor={factor} labels={values} peak={peak}/>:
               <MemberDiagrams project={project} result={result} field={field} peak={peak} scale={scale*48} selected={selection} labels={values}/>)}
             {selectedMember&&selectedSample&&<SpatialStationAxes project={project} member={selectedMember} showAxes={localAxes}
-              position={mode==='displacement'?addScaled(selectedSample.position,selectedSample.displacement,factor):selectedSample.position}/>}</>}/>
+              position={mode==='displacement'?addScaled(selectedSample.position,selectedSample.displacement,factor):selectedSample.position}/>}
+            {!sections.bulk&&<SpatialRuleLayer model={model} project={project} dimensions={dimensions} constraints={constraints}
+              onOpen={sketch.inspect} onMove={sketch.moveLabel}/>}</>}/>
         {(preparation||error)&&<aside className={'sr-alert '+(preparation?'sr-empty':'')} role={preparation?'status':'alert'}>
           <AlertTriangle size={19}/><div><strong>{preparation?'Prepare the 3D model':'3D analysis needs attention'}</strong><p>{preparation||error}</p><button onClick={onBack}><ArrowLeft size={14}/>Back to 3D-model</button></div></aside>}
         {pending&&<div className="sr-legend" role="status">Calculating 3D results…</div>}
@@ -224,6 +259,10 @@ export default function SpatialResults({model,onBack,onChange}:ResultsProps){
       </div>
     </div>
     {result&&result.warnings.length>0&&<div className="sr-warnings" role="status">{result.warnings.join(' ')}</div>}
+    {layers.menu([{name:'Grid',checked:grid,change:setGrid},{name:'Dimensions',checked:dimensions,change:setDimensions},{name:'Constraints',checked:constraints,change:setConstraints},{name:'Joint and member names',checked:names,change:setNames},
+      {name:'Applied loads',checked:loads,change:setLoads},{name:'Result values',checked:values,change:setValues},{name:'Selected member axes',checked:localAxes,change:setLocalAxes}])}
+    {sections.dialog}
+    {onChange&&sketch.menu}
     <footer className="sp-status"><span>{model.nodes.length} joints · {model.members.length} members · {model.loads?.length??0} loads</span><span>3D linear elastic · small displacements</span></footer>
   </section>;
 }

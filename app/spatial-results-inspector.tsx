@@ -1,15 +1,15 @@
-import {useMemo,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import type {FormEvent} from 'react';
-import {ArrowDown,Pencil,Plus,Trash2} from 'lucide-react';
+import {ArrowDown,FolderOpen,Pencil,Plus,Trash2} from 'lucide-react';
 import {useUnits} from './unit-context';
 import {inputNumber,lengthUnits,parseNumber,quantity,settingNumber} from './units';
 import type {UnitSettings} from './units';
 import NumberInput from './number-input';
-import {sections} from './sections';
-import {SectionDrawing} from './section-view';
-import {browserStore} from './local-storage';
+import {SectionQuickPicker} from './beam-library';
+import {MemberSectionView} from './section-view';
+import type {SpatialSectionsControl} from './spatial-section-editor';
 import type {SectionSpec} from './sections';
-import {sectionForSpatialMember,spatialSectionFromCatalog,validSpatialAnalysisInput} from './spatial-analysis-input';
+import {sectionForSpatialMember,validSpatialAnalysisInput} from './spatial-analysis-input';
 import type {SpatialLoad,SpatialSection} from './spatial-analysis-input';
 import type {SpatialModel,SpatialMember,Vec3} from './spatial-model';
 import type {SpatialSelection} from './spatial-canvas';
@@ -95,30 +95,34 @@ function LoadForm({load,length,allowDistributed,onApply,onClose}:{
   </form>;
 }
 
-type InspectorProps={model:SpatialModel;selection:SpatialSelection;onChange:(next:SpatialModel)=>void};
+export type SpatialLoadRequest={target:'node'|'member';targetId:string;kind:SpatialLoad['kind'];editId?:string;t?:number};
+type InspectorProps={
+  model:SpatialModel;selection:SpatialSelection;onChange:(next:SpatialModel)=>void;
+  sections?:SpatialSectionsControl;request?:SpatialLoadRequest|null;onDone?:()=>void;allowCreate?:boolean;
+};
 
-function MemberStiffness({member,onChange}:{member:SpatialMember;onChange:(section:SpatialSection)=>void}){
+function MemberStiffness({member,library,onChange}:{member:SpatialMember;library?:SpatialSectionsControl;onChange:(section:SpatialSection)=>void}){
   const units=useUnits(),stress=quantity(units,'stress');
   const section=sectionForSpatialMember(member),[error,setError]=useState('');
-  const catalog=useMemo(()=>{
-    let named:SectionSpec[]=[];
-    try {named=browserStore.listPresets().flatMap(p=>p.section?.geometry&&p.section.Iminor?[p.section]:[]);}catch{/* Built-in sections are always available. */}
-    return [...sections,...named];
-  },[]);
-  const current=catalog.find(s=>s.name===section.name);
+  const current=library?.targets.find(t=>t.id===member.id)?.section;
+  const [preview,setPreview]=useState<SectionSpec|null>(null);
+  function assign(preset:SectionSpec){
+    try{if(!library?.apply([member.id],preset))return false;setPreview(null);setError('');return true;}
+    catch(e){setError((e as Error).message);return false;}
+  }
   const baseUnit=units.length==='in'||units.length==='ft'?'in':'cm',base=lengthUnits[baseUnit];
   const field=(label:string,key:'A'|'Iy'|'Iz'|'J'|'E'|'G'|'roll',unit:string,factor:number)=>
     <label key={key} className="sp-field">{label} ({unit})<NumberInput label={label+' in '+unit} value={section[key]/factor} min={key==='roll'?undefined:Number.MIN_VALUE}
       onCommit={value=>onChange({...section,[key]:value*factor,name:key==='roll'?section.name:'Custom section'})}/></label>;
-  return <details className="sr-section-properties"><summary>Section stiffness <span>{section.name}</span></summary>
-    <label className="sp-field">Section preset<select aria-label="3D section preset" value={current?.id??''} onChange={e=>{
-      const next=catalog.find(item=>item.id===e.target.value);
-      if(next)try{onChange(spatialSectionFromCatalog(next,section.roll));setError('');}catch(e){setError((e as Error).message);}
-    }}>
-      {!current&&<option value="">Custom section</option>}
-      {[...new Set(catalog.map(s=>s.category))].map(category=><optgroup label={category} key={category}>{catalog.filter(s=>s.category===category).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</optgroup>)}
-    </select></label>
-    {current?.geometry&&<div className="sr-profile"><SectionDrawing section={current}/></div>}
+  return <section className="sr-member-section">
+    {library&&<><h3>Section</h3><SectionQuickPicker targets={library.targets} onUse={assign} currentId={member.id} libraryVersion={library.version}/>
+      <button className="sp-browse-sections" type="button" onClick={library.open}><FolderOpen size={14}/>Sections…</button></>}
+    {current&&<MemberSectionView section={preview??current} onResize={(next,commit)=>{
+      if(commit)return assign(next);
+      setPreview(next);return true;
+    }} onCancel={()=>setPreview(null)}/>}
+    {error&&<p role="alert" className="sr-error">{error}</p>}
+    <details className="sr-section-properties"><summary>Section stiffness <span>{section.name}</span></summary>
     <div className="sr-field-grid">
       {field('Area A','A',baseUnit+'²',base**2)}
       {field('Elastic modulus E','E',stress.unit,1000*stress.factor)}
@@ -131,14 +135,22 @@ function MemberStiffness({member,onChange}:{member:SpatialMember;onChange:(secti
       </>}
     </div>
     <small>{member.kind==='beam'?'Roll rotates the section about A → B. At zero roll, local z follows the projection of global Z, or global X for a vertical member. Preset G assumes Poisson’s ratio 0,3.':'Axial stiffness uses E and A.'}{member.kind==='beam'&&['RHS','SHS'].includes(current?.category??'')?' This hollow section uses a thin-wall estimate of J.':''}</small>
-    {error&&<p role="alert" className="sr-error">{error}</p>}
-  </details>;
+    </details>
+  </section>;
 }
 
-function SelectedAnalysisInspector({model,selection,onChange}:InspectorProps&{selection:NonNullable<SpatialSelection>}){
+function SelectedAnalysisInspector({model,selection,onChange,sections,request,onDone,allowCreate=true}:InspectorProps&{selection:NonNullable<SpatialSelection>}){
   const units=useUnits(),[draft,setDraft]=useState<SpatialLoad|null>(null),[error,setError]=useState('');
+  const form=useRef<HTMLDivElement>(null);
   const member=selection.type==='member'?model.members.find(m=>m.id===selection.id):undefined;
   const node=selection.type==='node'?model.nodes.find(n=>n.id===selection.id):undefined;
+  useEffect(()=>{
+    if(!request||request.target!==selection.type||request.targetId!==selection.id)return;
+    const load=request.editId?model.loads?.find(l=>l.id===request.editId):undefined;
+    if(load)setDraft(load);
+    else if(!request.editId&&allowCreate)startLoad(request.kind,request.t);
+  },[request]);
+  useEffect(()=>{if(draft)form.current?.scrollIntoView({block:'nearest'});},[draft]);
   if(!member&&!node)return null;
   const loads=(model.loads??[]).filter(load=>load.target===selection.type&&load.targetId===selection.id);
   const a=member&&model.nodes.find(n=>n.id===member.a),b=member&&model.nodes.find(n=>n.id===member.b);
@@ -147,36 +159,38 @@ function SelectedAnalysisInspector({model,selection,onChange}:InspectorProps&{se
     if(!validSpatialAnalysisInput(next)){setError('Check the load and stiffness values. Loads and properties must lie within the model range.');return false;}
     onChange(next);setError('');return true;
   }
-  function startLoad(){
+  function startLoad(kind:SpatialLoad['kind']='force',t?:number){
     const ids=new Set(model.loads?.map(load=>load.id));let seq=1;
     while(ids.has('L'+seq))seq++;
-    setDraft({id:'L'+seq,target:selection.type,targetId:selection.id,kind:'force',t:member?0.5:0,vector:{x:0,y:0,z:-1}});
+    setDraft({id:'L'+seq,target:selection.type,targetId:selection.id,kind,t:t??(member?0.5:0),vector:{x:0,y:0,z:kind==='moment'?1:-1}});
   }
+  function done(){setDraft(null);onDone?.();}
   function commit(load:SpatialLoad){
     const all=model.loads??[],exists=all.some(item=>item.id===load.id);
-    if(apply({...model,loads:exists?all.map(item=>item.id===load.id?load:item):[...all,load]}))setDraft(null);
+    if(apply({...model,loads:exists?all.map(item=>item.id===load.id?load:item):[...all,load]}))done();
   }
   const stiffness=quantity(units,'stiffness');
   return <div className="sr-model-inspector">
-    <div className="sr-load-heading"><h3>Applied loads</h3><button type="button" onClick={startLoad} aria-label={'Add load to '+selection.id}><Plus size={13}/>Add load</button></div>
+    {(loads.length>0||allowCreate)&&<div className="sr-load-heading"><h3>Applied loads</h3>{allowCreate&&<button type="button" onClick={()=>startLoad()} aria-label={'Add load to '+selection.id}><Plus size={13}/>Add load</button>}</div>}
     {loads.map(load=>{
       const q=quantity(units,loadQuantity(load.kind));
       return <div key={load.id} className="sr-load-item">
         <button className="sr-load-edit" type="button" title={'Edit '+load.id} onClick={()=>setDraft(load)}><ArrowDown size={14}/>
           <span><strong>{load.id} · {loadNames[load.kind]}</strong><small>{vectorSummary(load.vector,q.unit,q.factor,units)}</small>
           {member&&load.kind!=='distributed'&&<small>{settingNumber(load.t*length/lengthUnits[units.length],units,false)} {units.length} from {member.a}</small>}</span><Pencil size={12}/>
-        </button><button aria-label={'Remove load '+load.id} className="sr-icon" onClick={()=>{onChange({...model,loads:model.loads?.filter(item=>item.id!==load.id)});if(draft?.id===load.id)setDraft(null);}}><Trash2 size={13}/></button>
+        </button><button aria-label={'Remove load '+load.id} className="sr-icon" onClick={()=>{onChange({...model,loads:model.loads?.filter(item=>item.id!==load.id)});if(draft?.id===load.id)done();}}><Trash2 size={13}/></button>
       </div>;
     })}
-    {draft&&<LoadForm key={[draft.id,units.force,units.length,units.distributedLength,units.moment].join('/')} load={draft} length={length} allowDistributed={!!member} onApply={commit} onClose={()=>setDraft(null)}/>}
+    {draft&&<div ref={form}><LoadForm key={[draft.id,draft.kind,draft.t,units.force,units.length,units.distributedLength,units.moment].join('/')} load={draft} length={length} allowDistributed={!!member} onApply={commit} onClose={done}/></div>}
     {node&&node.support!=='free'&&<p className="sr-restraint">{restraintLabels[node.support]}</p>}
     {node?.support==='spring'&&<label className="sp-field">Z spring stiffness ({stiffness.unit})<NumberInput label="Z spring stiffness" min={Number.MIN_VALUE} value={(node.spring??10000)/stiffness.factor}
       onCommit={value=>apply({...model,nodes:model.nodes.map(item=>item.id===node.id?{...item,spring:value*stiffness.factor}:item)})}/></label>}
-    {member&&<MemberStiffness member={member} onChange={section=>apply({...model,members:model.members.map(item=>item.id===member.id?{...item,section}:item)})}/>}
+    {member&&<MemberStiffness member={member} library={sections} onChange={section=>apply({...model,members:model.members.map(item=>item.id===member.id?{...item,section}:item)})}/>}
     {error&&<p className="sr-error" role="alert">{error}</p>}
   </div>;
 }
 
-export function SpatialAnalysisInspector({model,selection,onChange}:InspectorProps) {
-  return selection?<SelectedAnalysisInspector key={selection.type+selection.id} model={model} selection={selection} onChange={onChange}/>:null;
+export function SpatialAnalysisInspector(props:InspectorProps) {
+  const {selection}=props;
+  return selection?<SelectedAnalysisInspector key={selection.type+selection.id} {...props} selection={selection}/>:null;
 }
