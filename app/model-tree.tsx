@@ -8,15 +8,18 @@ import {display} from './units';
 type Props = {
  model: Model;
  selected: Picked[];
- onSelect: (picked: Picked, add: boolean) => void;
+ onSelect: (picked: Picked, add: boolean, cursor?:{x:number;y:number}) => void;
  onClose: () => void;
 };
 
 export default function ModelTree({model,selected,onSelect,onClose}:Props){
+ function pick(item:Picked,e:React.MouseEvent) {
+  onSelect(item,e.shiftKey||e.ctrlKey||e.metaKey,e.ctrlKey||e.metaKey?{x:e.clientX,y:e.clientY}:undefined);
+ }
  const active=(picked:Picked)=>selected.some(item=>item.type===picked.type&&item.id===picked.id);
  const families=[...new Set(model.beams.map(beam=>beam.family))];
 
- return <aside className="model-tree-panel" aria-label="Model tree">
+ return <aside data-sketch-surface="tree" className="model-tree-panel" aria-label="Model tree">
   <header><b>Model tree</b><button aria-label="Close model tree" onClick={onClose}><X size={15}/></button></header>
   <details open>
    <summary>Applied forces <small>{model.loads.length}</small></summary>
@@ -28,7 +31,7 @@ export default function ModelTree({model,selected,onSelect,onClose}:Props){
     const category=moment?'moment':distributed?'distributed':'force';
     const member=model.beams.findIndex(beam=>beam.id===load.beam)+1;
     return <button key={load.id} aria-label={'Select L'+(index+1)+' '+name.toLowerCase()}
-     className={active(picked)?'active':''} onClick={e=>onSelect(picked,e.shiftKey)}>
+     className={active(picked)?'active':''} onClick={e=>pick(picked,e)}>
      {moment?<RotateCcw size={13}/>:<ArrowDown size={13}/>}
      <span>L{index+1} · {name}<small>{display(model,value,category)} · B{member}</small></span>
     </button>;
@@ -42,7 +45,7 @@ export default function ModelTree({model,selected,onSelect,onClose}:Props){
     {model.beams.filter(beam=>beam.family===family).map(beam=>{
      const picked:Picked={type:'beam',id:beam.id};
      return <button key={beam.id} className={active(picked)?'active':''}
-      onClick={e=>onSelect(picked,e.shiftKey)}>
+      onClick={e=>pick(picked,e)}>
       <MoveUpRight size={14}/><span>B{model.beams.indexOf(beam)+1} · {beam.profile}</span>
      </button>;
     })}
@@ -52,11 +55,11 @@ export default function ModelTree({model,selected,onSelect,onClose}:Props){
    <summary>Nodes &amp; supports <small>{model.nodes.length}</small></summary>
    {model.nodes.map((node,index)=>{
     const picked:Picked={type:'node',id:node.id};
-    return <button key={node.id} className={active(picked)?'active':''} onClick={e=>onSelect(picked,e.shiftKey)}>
+    return <button key={node.id} className={active(picked)?'active':''} onClick={e=>pick(picked,e)}>
      <svg width="25" height="29" viewBox="-20 -3 40 45"><SupportGlyph type={node.support}/></svg>N{index+1} · {node.support}
     </button>;
    })}
   </details>
-  <p>Shift-click to add to a selection. Drag an empty canvas area for box selection.</p>
+  <p>Ctrl-click two points or members for constraints. Shift-click adds to a selection.</p>
  </aside>;
 }

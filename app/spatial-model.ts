@@ -1,10 +1,15 @@
 import type {Joint, Support} from './model.ts';
 
+import {validSpatialRules,cleanSpatialRules,trackSpatialSplits,moveConstrainedSpatialNode} from './spatial-sketch.ts';
+import type {SpatialRule} from './spatial-sketch.ts';
+import {validSpatialAnalysisInput,splitSpatialLoads} from './spatial-analysis-input.ts';
+import type {SpatialSection,SpatialLoad} from './spatial-analysis-input.ts';
+
 /** Positions are Cartesian coordinates in metres, with Z upward. */
 export type Vec3 = {x: number; y: number; z: number};
-export type SpatialNode = Vec3 & {id: string; joint: Joint; support: Support};
-export type SpatialMember = {id: string; a: string; b: string; kind: 'beam' | 'strut'};
-export type SpatialModel = {nodes: SpatialNode[]; members: SpatialMember[]};
+export type SpatialNode = Vec3 & {id: string; joint: Joint; support: Support; spring?:number};
+export type SpatialMember = {id: string; a: string; b: string; kind: 'beam' | 'strut'; section?:SpatialSection; family?:string};
+export type SpatialModel = {nodes: SpatialNode[]; members: SpatialMember[]; rules?:SpatialRule[]; loads?:SpatialLoad[]};
 
 const tolerance = 1e-6;
 const maxNodes = 500;
@@ -46,7 +51,7 @@ export function validSpatialModel(value: unknown): value is SpatialModel {
   const byId = new Map<string, SpatialNode>();
   const locations = new Set<string>();
   for (const node of nodes) {
-    if (!validPosition(node) || !validId(node.id) || byId.has(node.id) || !jointTypes.has(node.joint) || !supportTypes.has(node.support)) return false;
+    if (!validPosition(node) || !validId(node.id) || node.id==='@origin' || byId.has(node.id) || !jointTypes.has(node.joint) || !supportTypes.has(node.support)) return false;
     const location = JSON.stringify([node.x, node.y, node.z]);
     if (locations.has(location)) return false;
     locations.add(location);
@@ -63,7 +68,7 @@ export function validSpatialModel(value: unknown): value is SpatialModel {
     spans.add(span);
     memberIds.add(member.id);
   }
-  return true;
+  return validSpatialRules(value as SpatialModel) && validSpatialAnalysisInput(value as SpatialModel);
 }
 
 export function ensureSpatialNode(model: SpatialModel, point: Vec3): {model: SpatialModel; node: SpatialNode} {
@@ -101,8 +106,13 @@ export function updateSpatialNode(model: SpatialModel, id: string, change: Parti
   const updated = {...node, ...change, id};
   if (!validPosition(updated)) throw Error('Enter finite X, Y and Z coordinates.');
   if (!jointTypes.has(updated.joint) || !supportTypes.has(updated.support)) throw Error('Choose a listed joint and support type.');
-  if (model.nodes.some(item => item.id !== id && distance(item, updated) <= tolerance)) throw Error('A joint already occupies that position.');
-  return {...model, nodes: model.nodes.map(item => item.id === id ? updated : item)};
+  if (model.nodes.some(item=>item.id!==id && distance(item,updated)<=tolerance))
+    throw Error('A joint already occupies that position.');
+  const positioned = updated.x!==node.x || updated.y!==node.y || updated.z!==node.z
+    ? moveConstrainedSpatialNode(model,id,updated) : model;
+  const next = {...positioned,nodes:positioned.nodes.map(item=>item.id===id?{...item,...change,x:item.x,y:item.y,z:item.z,id}:item)};
+  if (!validSpatialModel(next)) throw Error('The joint edit would create invalid geometry or properties.');
+  return next;
 }
 
 export function updateSpatialMember(model: SpatialModel, id: string, change: Pick<SpatialMember, 'kind'>): SpatialModel {
@@ -112,11 +122,15 @@ export function updateSpatialMember(model: SpatialModel, id: string, change: Pic
 }
 
 export function removeSpatialMember(model: SpatialModel, id: string): SpatialModel {
-  return {...model, members: model.members.filter(item => item.id !== id)};
+  return cleanSpatialRules({...model, members:model.members.filter(item=>item.id!==id),
+    ...(model.loads?{loads:model.loads.filter(load=>load.target!=='member'||load.targetId!==id)}:{})});
 }
 
 export function removeSpatialNode(model: SpatialModel, id: string): SpatialModel {
-  return {...model, nodes: model.nodes.filter(node => node.id !== id), members: model.members.filter(item => item.a !== id && item.b !== id)};
+  const members=model.members.filter(item=>item.a!==id && item.b!==id);
+  const remaining=new Set(members.map(b=>b.id));
+  return cleanSpatialRules({...model, nodes:model.nodes.filter(node=>node.id!==id), members,
+    ...(model.loads?{loads:model.loads.filter(load=>load.target==='node'?load.targetId!==id:remaining.has(load.targetId))}:{})});
 }
 
 function closestOnSpan(point: Vec3, a: Vec3, b: Vec3): Vec3 {
@@ -160,16 +174,21 @@ export function insertSpatialJoint(model: SpatialModel, memberId: string, point:
 function splitMembersAtNode(model: SpatialModel, node: SpatialNode): SpatialModel {
   const nodes = new Map(model.nodes.map(item => [item.id, item]));
   const halves: SpatialMember[] = [];
+  const tails=new Map<string,string>();
+  let loads=model.loads;
   const first = model.members.map(member => {
     if (member.a === node.id || member.b === node.id) return member;
     const a = nodes.get(member.a)!, b = nodes.get(member.b)!;
     if (distance(closestOnSpan(node, a, b), node) > tolerance) return member;
-    halves.push({...member, a: node.id, id: nextId([...model.members, ...halves], 'B')});
-    return {...member, b: node.id};
+    const id=nextId([...model.members,...halves],'B'), family=member.family??nextId([...model.members,...halves].map(b=>({id:b.family??b.id})),'chain-');
+    halves.push({...member,id,a:node.id,family});
+    tails.set(member.id,id);
+    loads=splitSpatialLoads(loads,member.id,id,distance(a,node)/distance(a,b));
+    return {...member,b:node.id,family};
   });
   if (!halves.length) return model;
   if (first.length + halves.length > maxMembers) throw Error(`Splitting here would exceed the limit of ${maxMembers} members.`);
-  const result = {...model, members: [...first, ...halves]};
+  const result = trackSpatialSplits({...model, members:[...first,...halves],...(loads?{loads}:{})},tails);
   if (!validSpatialModel(result)) throw Error('This joint would create overlapping member segments.');
   return result;
 }
