@@ -1,0 +1,77 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {example, validModel} from '../app/model.ts';
+import {addSpatialMember, emptySpatialModel, ensureSpatialNode, insertSpatialJoint, placeSpatialJoint, removeSpatialMember, removeSpatialNode, spatialMemberIntersection, updateSpatialMember, updateSpatialNode, validSpatialModel} from '../app/spatial-model.ts';
+
+const point = (x, y, z) => ({x, y, z});
+assert.deepEqual(spatialMemberIntersection(point(-1, 0, -1), point(1, 0, 1), point(0, -2, 1), point(0, 2, -1)), point(0, 0, 0));
+assert.equal(spatialMemberIntersection(point(-1, 0, 0), point(1, 0, 0), point(0, -1, 2), point(0, 1, 2)), null);
+assert.equal(spatialMemberIntersection(point(-1, 0, 0), point(1, 0, 0), point(3, -1, 0), point(3, 1, 0)), null);
+assert.equal(spatialMemberIntersection(point(-1, 0, 0), point(1, 0, 0), point(-2, 0, 0), point(3, 0, 0)), null);
+const original = emptySpatialModel();
+const xMember = addSpatialMember(original, point(-1, 0, 0), point(1, 0, 0), 'beam');
+const tee = addSpatialMember(xMember.model, point(0, 0, 0), point(0, 0, 1), 'strut');
+assert.equal(tee.model.members.length, 3);
+assert.equal(tee.model.members.filter(member => [member.a, member.b].includes(tee.member.a)).length, 3);
+assert.throws(() => addSpatialMember(tee.model, point(-2, 0, 0), point(2, 0, 0), 'beam'), /overlaps/);
+assert.throws(() => addSpatialMember(tee.model, point(0, 0, 0), point(0.5, 0, 0), 'beam'), /already joins/);
+const yMember = addSpatialMember(xMember.model, point(0, -1, 0), point(0, 1, 0), 'strut');
+const overhead = addSpatialMember(yMember.model, point(0, -1, 2), point(0, 1, 2), 'beam');
+const brace = addSpatialMember(overhead.model, point(0, 1, 2), point(1, 0, 0), 'strut');
+assert.deepEqual(original, {nodes: [], members: []});
+assert.equal(brace.model.nodes.length, 6);
+assert.equal(ensureSpatialNode(brace.model, point(1, 0, 0.0000001)).node.id, xMember.member.b);
+assert.throws(() => addSpatialMember(brace.model, point(1, 0, 0), point(-1, 0, 0), 'strut'), /already joins/);
+assert.throws(() => addSpatialMember(brace.model, point(4, 0, 0), point(4, 0, 0), 'beam'), /distinct/);
+assert.throws(() => updateSpatialNode(brace.model, brace.member.a, point(NaN, 1, 0)), /finite/);
+assert.throws(() => updateSpatialNode(brace.model, brace.member.a, point(1, 0, 0)), /already occupies/);
+
+const split = insertSpatialJoint(brace.model, xMember.member.id, point(0, 0, 0));
+assert.deepEqual(split, placeSpatialJoint(brace.model, point(0, 0, 0)));
+assert.equal(split.model.members.length, 6);
+const incident = split.model.members.filter(member => [member.a, member.b].includes(split.node.id));
+assert.equal(incident.length, 4);
+assert.equal(incident.filter(member => member.kind === 'strut').length, 2);
+assert.deepEqual(split.model.members.find(member => member.id === overhead.member.id), overhead.member);
+assert.deepEqual(insertSpatialJoint(split.model, yMember.member.id, split.node), split);
+const revised = updateSpatialNode(split.model, split.node.id, {z: 0.25, joint: 'pin', support: 'fixed'});
+assert.equal(revised.nodes.at(-1).z, 0.25);
+assert.equal(split.node.z, 0);
+assert.equal(updateSpatialMember(revised, xMember.member.id, {kind: 'strut'}).members[0].kind, 'strut');
+assert.equal(removeSpatialMember(revised, xMember.member.id).nodes.length, revised.nodes.length);
+const removed = removeSpatialNode(revised, split.node.id);
+assert.equal(removed.members.length, 2);
+assert.equal(removed.nodes.length, 6);
+assert.ok(validSpatialModel(removed));
+assert.equal(validSpatialModel(null), false);
+assert.equal(validSpatialModel({nodes: [null], members: []}), false);
+assert.equal(validSpatialModel({...revised, members: [{...brace.member, a: 'missing'}]}), false);
+assert.equal(validSpatialModel({...revised, nodes: [...revised.nodes, {...revised.nodes[0], id: 'extra'}]}), false);
+assert.equal(validSpatialModel({...revised, members: [...revised.members, {...brace.member, id: 'extra', a: brace.member.b, b: brace.member.a}]}), false);
+assert.equal(validModel({...example('empty'), spatial: null}), false);
+
+// Exercise the production browser store with fresh storage instances.
+const bundle = await build({entryPoints: ['app/local-storage.ts'], bundle: true, platform: 'node', format: 'esm', write: false});
+const {createLocalStore} = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'));
+function storage() {
+  const data = new Map();
+  return {getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value)};
+}
+const medium = storage();
+const store = createLocalStore(medium);
+const planar = example();
+assert.ok(validModel(planar));
+const model = {...planar, spatial: revised};
+assert.ok(validModel(JSON.parse(JSON.stringify(model))));
+const project = store.saveProject('Combined drawing', model);
+const planarProject = store.saveProject('Original 2D drawing', planar);
+assert.equal(store.loadProject(planarProject.id).model.spatial, undefined);
+store.writeDraft({projectId: project.id, name: project.name, model, dirty: true});
+assert.deepEqual(createLocalStore(medium).readDraft().model.spatial, revised);
+const restored = createLocalStore(storage());
+restored.importBackup(JSON.parse(JSON.stringify(store.exportBackup())));
+assert.deepEqual(restored.loadProject(project.id).model.spatial, revised);
+assert.deepEqual(restored.loadProject(project.id).model.nodes, planar.nodes);
+assert.throws(() => store.saveProject('Damaged', {...model, spatial: {nodes: [], members: [brace.member]}}, project.id));
+assert.deepEqual(store.loadProject(project.id).model.spatial, revised);
+console.log('Passed: 3D topology, depth-aware joints and crossings, model edits, validation, legacy projects, browser saves, drafts and backups.');
