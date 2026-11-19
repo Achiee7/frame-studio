@@ -104,7 +104,7 @@ const originalLoad=load('member','M','force',v(P),.8);
 const remapped=splitSpatialLoads([originalLoad],'M','M2',.5);
 assert.equal(remapped[0].targetId,'M2');near(remapped[0].t,.6);
 const uniform=splitSpatialLoads([load('member','M','distributed',v(0,0,-P))],'M','M2',.5);
-assert.equal(uniform.length,2);assert.notEqual(uniform[0].id,uniform[1].id);
+assert.equal(uniform.length,2);assert.deepEqual(uniform.map(l=>l.id),['L1','L2']);
 assert.equal(validSpatialAnalysisInput({...single(),loads:[{...originalLoad,targetId:'missing'}]}),false);
 
 // A split preserves loads in world space, including one exactly at the split,

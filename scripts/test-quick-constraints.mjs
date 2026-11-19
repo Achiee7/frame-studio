@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {beamDefaults, validModel} from '../app/model.ts';
 import {planarActions, quickPlanarConstraint} from '../app/planar-quick.ts';
-import {availableActions, toggleGeometry} from '../app/sketch-actions.ts';
+import {availableActions,spatialCommandSelection,toggleGeometry} from '../app/sketch-actions.ts';
 
 const node=id=>({type:'node',id}), member=id=>({type:'member',id});
 const [a,b,c,d]=['A','B','C','D'].map(node);
@@ -42,4 +42,16 @@ assert.deepEqual(availableActions('3D','constraint',[a,d],model.beams),['connect
 assert.deepEqual(availableActions('3D','dimension',[a,d],model.beams),['length','dx','dy','dz']);
 assert.deepEqual(availableActions('3D','dimension',[c,one],model.beams),['offset']);
 assert.deepEqual(availableActions('3D','dimension',[two,one],model.beams),['angle']);
+assert.deepEqual(availableActions('3D','constraint',[one],model.beams),['alongX','alongY','alongZ']);
+const cmd=(name,picks,mode='constraint')=>spatialCommandSelection(name,mode,picks,model.beams);
+assert.ok(cmd('alongZ',[one]).complete);
+assert.ok(!cmd('alongX',[a]).complete);assert.ok(cmd('alongX',[a,c]).complete);
+assert.ok(cmd('dx',[one],'dimension').complete);
+assert.ok(cmd('dz',[a,d],'dimension').complete);
+assert.ok(!cmd('angle',[a,c],'dimension').complete);
+assert.deepEqual(cmd('angle',[a,one],'dimension').picks,[one]);
+assert.ok(cmd('angle',[one,two],'dimension').complete);
+assert.ok(cmd('connect',[c,one]).complete);assert.equal(cmd('connect',[one,c]).action,'pointOnMember');
+assert.ok(!cmd('connect',[a,one]).complete);assert.ok(!cmd('connect',[a,b]).complete);
+assert.ok(cmd('offset',[c,one],'dimension').complete);assert.ok(cmd('parallel',[two,one]).complete);
 console.log('Passed contextual constraint choices, selection order, topology and sketch updates.');
