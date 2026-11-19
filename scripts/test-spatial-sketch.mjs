@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {createSpatialRule,editSpatialRule,suppressSpatialRule,removeSpatialRule,spatialRuleValue,spatialMeasurement,
-  spatialRuleTouchesMember,validSpatialRules,moveConstrainedSpatialNode,SPATIAL_ORIGIN} from '../app/spatial-sketch.ts';
+  spatialRuleTouchesMember,validSpatialRules,setSpatialPositionLock,spatialPositionLocked,translateSpatialMember,moveConstrainedSpatialNode,SPATIAL_ORIGIN} from '../app/spatial-sketch.ts';
 import {placeSpatialJoint,removeSpatialMember,removeSpatialNode,updateSpatialNode,validSpatialModel} from '../app/spatial-model.ts';
 
 const ref=(type,id)=>({type,id}), n=id=>ref('node',id), m=id=>ref('member',id);
@@ -46,6 +46,14 @@ assert.equal(impossible.rules.at(-1).driven,true);assert.deepEqual(impossible.no
 let lock=createSpatialRule(a,'connect',[n('a'),origin]);
 for(const axis of ['x','y','z'])near(point(lock,'a')[axis],0);
 assert.throws(()=>moveConstrainedSpatialNode(lock,'a',pt(1,2,3)),/conflicts/);
+assert.throws(()=>translateSpatialMember(lock,'u',pt(1,0,0)),/conflicts/);
+const couple=createSpatialRule(a,'midpoint',[m('u'),n('c')]);
+const delta=pt(-2,3,1);
+const shifted=translateSpatialMember(couple,'u',delta);
+for(const id of ['a','b','c'])for(const axis of ['x','y','z'])near(point(shifted,id)[axis],point(couple,id)[axis]+delta[axis]);
+assert.deepEqual(point(shifted,'d'),point(couple,'d'));
+assert.equal(shifted.members,couple.members);
+assert.equal(translateSpatialMember(couple,'u',pt(0,0,0)),couple);
 lock=suppressSpatialRule(lock,lock.rules[0].id,true);
 lock=moveConstrainedSpatialNode(lock,'a',pt(2,3,4));near(point(lock,'a').x,2);
 lock=suppressSpatialRule(lock,lock.rules[0].id,false);near(point(lock,'a').x,0);
@@ -124,6 +132,39 @@ const changing=coupled.rules.at(-1).id;
 const bundle=await build({entryPoints:['app/local-storage.ts'], bundle:true,platform:'node',format:'esm',write:false});
 const {createLocalStore}=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
 const bag=new Map(), medium={getItem:k=>bag.get(k)??null,setItem:(k,v)=>bag.set(k,v)};
+const fixedTip=setSpatialPositionLock(a,'b',true);
+assert.equal(setSpatialPositionLock(fixedTip,'b',true),fixedTip);
+assert.equal(spatialPositionLocked(fixedTip,'b'),true);
+assert.equal(point(fixedTip,'b').support,'free');
+assert.equal(spatialPositionLocked(a,'b'),false);
+assert.equal(validSpatialModel({...a,nodes:[{...a.nodes[0],positionLocked:'yes'},...a.nodes.slice(1)]}),false);
+assert.throws(()=>updateSpatialNode(fixedTip,'b',pt(1,8,5)),/Unlock/);
+assert.throws(()=>translateSpatialMember(fixedTip,'u',pt(.1,0,0)),/Unlock/);
+for(const kind of ['dx','length','alongZ']){
+  const result=createSpatialRule(fixedTip,kind,[m('u')],kind==='alongZ'?undefined:9);
+  assert.deepEqual(point(result,'b'),point(fixedTip,'b'));
+  if(kind!=='alongZ')near(spatialRuleValue(result,result.rules[0]),9);
+}
+const parallelPair={nodes:[node('a',0,0,0),node('b',2,0,0),node('c',0,1,0),node('d',2,1,0)],members:[beam('u','a','b'),beam('v','c','d')]};
+const fixedReference=setSpatialPositionLock(setSpatialPositionLock(parallelPair,'c',true),'d',true);
+const rotated=createSpatialRule(fixedReference,'perpendicular',[m('u'),m('v')]);
+near(spatialMeasurement(rotated,'angle',[m('u'),m('v')]),90);
+const fixedAxis=createSpatialRule(fixedTip,'alongX',[m('u')]);
+const fixedSpan=createSpatialRule(fixedAxis,'length',[m('u')]);
+assert.throws(()=>moveConstrainedSpatialNode(fixedSpan,'a',pt(0,0,0)),/conflicts/);
+assert.deepEqual(point(fixedSpan,'b'),point(fixedTip,'b'));
+const heldSpan=setSpatialPositionLock(fixedTip,'a',true);
+const lockedMeasure=createSpatialRule(heldSpan,'length',[m('u')],22);
+assert.ok(lockedMeasure.rules[0].driven);
+assert.deepEqual(lockedMeasure.nodes,heldSpan.nodes);
+assert.throws(()=>createSpatialRule(setSpatialPositionLock(fixedTip,'c',true),'connect',[n('c'),n('b')]),/Unlock/);
+const mergedLock=createSpatialRule(fixedTip,'connect',[n('c'),n('b')]);
+assert.ok(spatialPositionLocked(mergedLock,'c'));
+for(const axis of ['x','y','z'])assert.equal(point(mergedLock,'c')[axis],point(fixedTip,'b')[axis]);
+assert.equal(spatialPositionLocked(removeSpatialNode(mergedLock,'c'),'c'),false);
+assert.deepEqual(setSpatialPositionLock(fixedTip,'b',false),a);
+createLocalStore(medium).writeDraft({name:'Locked position',projectId:null,dirty:true,model:{nodes:[],beams:[],loads:[],spatial:fixedTip}});
+assert.deepEqual(createLocalStore(medium).readDraft().model.spatial,fixedTip);
 for(let i=0;i<18;i++){
   coupled=editSpatialRule(coupled,changing,4+.4*Math.sin(i*.8));
   createLocalStore(medium).writeDraft({name:'Driven frame',projectId:null,dirty:true,model:{nodes:[],beams:[],loads:[],spatial:coupled}});

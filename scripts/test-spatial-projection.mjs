@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {directions,fitCamera,initialCamera,nearbySpatialCrossing,panCamera,planeAxes,project3D,workplaneGrid,workplanePoint,zoomCamera} from '../app/spatial-projection.ts';
+import {directions,fitCamera,geometryDragDelta,geometryDragPlane,initialCamera,nearbySpatialCrossing,panCamera,planeAxes,project3D,workplaneGrid,workplanePoint,zoomCamera} from '../app/spatial-projection.ts';
 import {clampDrawingScale,draftingStep,fitPlanar,gridPixels,maxGridIntervals,snapCoordinate,visibleSegment,wheelZoomFactor,zoomButtonFactor,zoomPlanar} from '../app/drafting-grid.ts';
 
 const size={width:821,height:476};
@@ -17,6 +17,17 @@ for(const plane of ['XY','XZ','YZ']){
   near(screen.x+20,panned.x);near(screen.y+50,panned.y);
 }
 assert.equal(workplanePoint({x:30,y:40},{...camera,...directions.Front},size,'XY',0),null);
+for(const [view,expected] of [['Top','XY'],['Front','XZ'],['Right','YZ'],['Isometric','XY']]){
+  const cam={...camera,...directions[view]},plane=geometryDragPlane(cam,'XY');
+  assert.equal(plane,expected);
+  const p={x:4,y:7,z:.8},from=project3D(p,cam,size),to={x:from.x+43,y:from.y-29};
+  const d=geometryDragDelta(from,to,cam,size,plane,0);
+  near(d[planeAxes[plane][2]],0);
+  const dest=project3D({x:p.x+d.x,y:p.y+d.y,z:p.z+d.z},cam,size);
+  near(dest.x,to.x);near(dest.y,to.y);
+  const snapped=geometryDragDelta(from,to,cam,size,plane,.25);
+  for(const value of Object.values(snapped))near(value*4,Math.round(value*4));
+}
 const top={...camera,...directions.Top},origin={x:0,y:0,z:2};
 const screen=project3D(origin,top,size),cursor={x:screen.x+3,y:screen.y-2};
 const a={x:-1,y:0,z:2},b={x:1,y:0,z:2},c={x:0,y:-1,z:2},d={x:0,y:1,z:2};
