@@ -66,7 +66,7 @@ export default function Studio(){
  const [constraintEditor,setConstraintEditor]=useState<{id:string;legacy:boolean;x:number;y:number}|null>(null);
  const [conflict,setConflict]=useState<SketchConflict|null>(null),[constraintPickType,setConstraintPickType]=useState<'point'|'member'|'midpoint'|null>(null);
  const [geometrySelection,setGeometrySelection]=useState<string|undefined>();
- const [m,setM]=useState<Model>(()=>initialSession.draft?.model??withLoadPositions(example())),[title,setTitle]=useState(initialSession.draft?.name??'Crossing beams study'),[tool,setTool]=useState('select'),[sel,setSel]=useState<Selection>({type:'node',id:'N5'}),[view,setView]=useState({scale:68,x:90,y:420}),[size,setSize]=useState({w:800,h:650}),[hover,setHover]=useState<any>(null),[start,setStart]=useState<string|null>(null),[notice,setNotice]=useState(''),[modal,setModal]=useState(''),[tab,setTab]=useState(()=>restoredTab(initialSession.draft?.model)),[resultView,setResultView]=useState('M'),[resultScale,setResultScale]=useState(70),[analysis,setAnalysis]=useState(false),[combo,setCombo]=useState('Service'),[loadCase,setLoadCase]=useState('Q'),[grid,setGrid]=useState(true),[labels,setLabels]=useState(true),[showLoads,setShowLoads]=useState(true),[snapGrid,setSnapGrid]=useState(true),[defaultSupport,setDefaultSupport]=useState<Support>('pinned'),[dirty,setDirty]=useState(initialSession.draft?.dirty??false),[projectId,setProjectId]=useState<string|null>(initialSession.draft?.projectId??null),[savedProjects,setSavedProjects]=useState<Project[]>([]),[sync,setSync]=useState(initialSession.draft?.projectId?'Saved in this browser':'Browser draft'),[left,setLeft]=useState(true),[right,setRight]=useState(false),[history,setHistory]=useState<Model[]>([]),[future,setFuture]=useState<Model[]>([]);
+ const [m,setM]=useState<Model>(()=>initialSession.draft?.model??withLoadPositions(example())),[title,setTitle]=useState(initialSession.draft?.name??'Crossing beams study'),[tool,setTool]=useState('select'),[sel,setSel]=useState<Selection>(null),[view,setView]=useState({scale:68,x:90,y:420}),[size,setSize]=useState({w:800,h:650}),[hover,setHover]=useState<any>(null),[start,setStart]=useState<string|null>(null),[notice,setNotice]=useState(''),[modal,setModal]=useState(''),[tab,setTab]=useState(()=>restoredTab(initialSession.draft?.model)),[resultView,setResultView]=useState('M'),[resultScale,setResultScale]=useState(70),[analysis,setAnalysis]=useState(false),[combo,setCombo]=useState('Service'),[loadCase,setLoadCase]=useState('Q'),[grid,setGrid]=useState(true),[labels,setLabels]=useState(true),[showLoads,setShowLoads]=useState(true),[snapGrid,setSnapGrid]=useState(true),[defaultSupport,setDefaultSupport]=useState<Support>('pinned'),[dirty,setDirty]=useState(initialSession.draft?.dirty??false),[projectId,setProjectId]=useState<string|null>(initialSession.draft?.projectId??null),[savedProjects,setSavedProjects]=useState<Project[]>([]),[sync,setSync]=useState(initialSession.draft?.projectId?'Saved in this browser':'Browser draft'),[left,setLeft]=useState(true),[right,setRight]=useState(false),[history,setHistory]=useState<Model[]>([]),[future,setFuture]=useState<Model[]>([]);
  const [projectSession,setProjectSession]=useState(0);
  const spatialOpen=tab==='spatial'||tab==='spatialResults';
  const [quick,setQuick]=useState<{picks:GeometryPick[];at:CursorPosition;model:Model;error?:string}|null>(null);
@@ -160,7 +160,12 @@ export default function Studio(){
  }
  function startRibbonConstraint(id:string){
   const action=(id==='horizontal'?'alongX':id==='vertical'?'alongY':id) as SketchAction;
-  const targets=quickPicks?.picks??multi.filter(p=>p.type!=='load').map(p=>({type:p.type==='beam'?'member' as const:'node' as const,id:p.id}));
+  const selected=sel?[sel]:multi;
+  const targets=quickPicks?.picks??selected.flatMap<GeometryPick>(p=>{
+   if(p.type==='beam'&&m.beams.some(b=>b.id===p.id))return [{type:'member',id:p.id}];
+   if(p.type==='node'&&m.nodes.some(n=>n.id===p.id))return [{type:'node',id:p.id}];
+   return [];
+  });
   if(targets.length&&planarActions(m,targets).includes(action)){
    try{const next=quickPlanarConstraint(m,action,targets);if(change(next)){choose('select');setRight(false);setShowConstraints(true);keepSketchVisible(next);setNotice('Constraint applied.');}}catch(err){setNotice((err as Error).message);}
    return;
