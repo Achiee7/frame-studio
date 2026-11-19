@@ -4,13 +4,13 @@
 
 **No installation or account is needed.** Open the link above, draw your frame, and view the calculated forces in Results. Use the save icon to keep a named project in your browser.
 
-An open-source, browser-based editor and calculator for 2D structural frames. Draw beams and struts, add supports and loads anywhere on a member, constrain and dimension the sketch, then inspect reactions, axial forces, shear, bending moments and deflections.
+An open-source, browser-based editor and calculator for 2D and 3D structural frames. Draw beams and struts, add supports and loads, dimension the sketch, and inspect reactions, member forces and deflections.
 
 Projects, recovery drafts and named beam presets stay in your browser. There is no account, collaboration service, database, API key, analytics or backend. No project data is sent to a server. This edition is independent of the separately hosted collaborative app.
 
 ![Frame Studio reaction results](docs/screenshot.jpg)
 
-## Draw a 3D wireframe
+## Draw and analyse a 3D frame
 
 Open **3D-model** and choose **Beam** or **Strut**. Pick two endpoints on the grid, or enter exact X, Y and Z coordinates in the project length unit. Keep placing points to draw a chain. Press **Enter** to finish. For a second level, select the XY workplane and set its Z offset to the level height. The XZ and YZ planes let you draw elevations.
 
@@ -18,7 +18,11 @@ Drag in **Orbit** to rotate, use **Pan** to move the view, and scroll to zoom. T
 
 Use **Joint** to split a member or connect members at a shared 3D intersection. When geometry overlaps in a view, the picker shows the candidate coordinates. Select a joint to edit its position, connection and support, or select a member to inspect its true length and endpoints.
 
-Each project saves both drawings. The **Results** tab calculates the 2D model. The 3D tab is for geometry and connectivity.
+**Ctrl-click** two items in either sketch (**Cmd-click** on macOS) to see constraints for that pair next to the pointer. Two joints can connect or align. A joint and a separate member offer point-on-member and midpoint. Two members offer equal length, parallel, perpendicular or collinear. In 3D, **Along X**, **Along Y** and **Along Z** align a member or point pair with the chosen global axis.
+
+In **3D-model → Dimension**, pick a member for its true length, two joints for their true or axis distance, two members for their angle, or a member and a joint for perpendicular distance. Enter a value to drive the sketch. Click a dimension label to edit its value and drag the label to reposition it. Both the 2D and 3D drawings save in the same project.
+
+Select a 3D joint or member to add a load. Open **3D Results** for support reactions, deflection, axial force, two shear components, biaxial bending and torsion. Check any joint for XYZ results or select a member to inspect stations along its length. See [3D element properties, supports and analysis limits](docs/spatial-analysis.md).
 
 ## Sections and easier modelling
 
@@ -54,7 +58,7 @@ Exported single-frame JSON uses the same `frame-studio-v1` format as the collabo
 - Loads at member ends stay attached to the corresponding node. Interior loads can keep an explicit distance from a member end.
 - Each force vector or moment can be independently marked as reversible. Impossible combined cases can be excluded before report generation. Reports use only included cases, a common bending-diagram scale, equilibrium residuals and a final complete node-results table.
 
-Results offers both linear elastic analysis and **Material · loading & unloading**. Material mode uses small-displacement distributed-fibre Euler–Bernoulli elements with bilinear kinematic hardening, incremental loading and an unloading path to zero force. Green indicates elastic response, orange plastic history with calculated permanent set, and red an entered tensile/strain limit or an ideal perfectly plastic mechanism. Gray means unresolved, not proven failure. Material mode supports 20 members and requires a section shape; elastic analysis supports 80 members and A/I-only sections.
+**2D Results** offers both linear elastic analysis and **Material · loading & unloading**. Material mode uses small-displacement distributed-fibre Euler–Bernoulli elements with bilinear kinematic hardening, incremental loading and an unloading path to zero force. Green indicates elastic response, orange plastic history with calculated permanent set, and red an entered tensile/strain limit or an ideal perfectly plastic mechanism. Gray means unresolved, not proven failure. Material mode supports 20 members and requires a section shape; elastic analysis supports 80 members and A/I-only sections.
 
 S235JR is the default. The material library has 20 starting presets across structural steels, stainless grades, aluminium alloys and engineering plastics. Yield/proof strength, modulus, post-yield tangent and optional tensile/strain limits are editable. Catalog hardening is an assumed 1% of E, not a certified curve. Some presets deliberately have no failure limit. Product form, thickness, environment and stress–strain data require verification; plastics use a short-term symmetric approximation without creep or temperature effects.
 
