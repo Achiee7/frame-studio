@@ -67,6 +67,9 @@
 .section-assign-controls select { width: 100%; margin-top: 4px; }
 .section-quick-picker { display: block; margin: 12px 0 8px; }
 .section-quick-picker select { width: 100%; margin-top: 5px; }
+.member-section-chooser { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 7px; margin: 13px 0 10px; }
+.member-section-chooser .section-quick-picker { margin: 0; min-width: 0; }
+.member-section-chooser .open-sections { width: auto; margin: 0; align-self: end; }
 .section-tree button { display: flex; align-items: center; gap: 5px; }
 .section-card strong { overflow-wrap: anywhere; }
 .section-detail .profile-editor, .member-section-view .profile-editor { background: #f8fbf9; border: 1px solid #d6e2d9; border-radius: 8px; }
