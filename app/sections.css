@@ -33,3 +33,23 @@
 @media(max-width:700px){.model-analysis-alert{left:12px;bottom:62px}.cad-workspace .analysis-banner{left:75px;right:12px;bottom:62px;max-width:none}}
 
 .model-tree-empty{display:block;padding:6px 2px 10px;color:#688174}
+
+.member-annotations h3{margin-bottom:9px}
+.member-annotation-branch{border:1px solid #e2ebe5;border-radius:7px;margin-top:6px;background:#fbfdfa}
+.member-annotation-branch>summary{cursor:pointer;padding:8px 10px;font-size:11px;font-weight:600;color:#38594b}
+.member-annotation-count{float:right;color:#638274;font-variant-numeric:tabular-nums}
+.member-annotation-branch>ul{list-style:none;padding:0 8px 2px;margin:0}
+.member-annotation{border-top:1px solid #e5ece7;margin:0;padding:0}
+.member-annotation-row{display:flex;gap:8px;width:100%;min-width:0;align-items:flex-start;padding:8px 3px;color:#35584a;text-align:left}
+.member-annotation-row>svg{flex-shrink:0;margin-top:2px;color:#5c8674}
+.member-annotation-copy{flex:1;min-width:0}
+.member-annotation-copy b{display:block;font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.member-annotation-copy small{display:block;color:#657e72;line-height:1.35}
+.member-annotation-row.annotation-edit{border:none;border-radius:4px;justify-content:flex-start;background:transparent}
+.member-annotation-row.annotation-edit:hover,.member-annotation-row.annotation-edit[aria-expanded=true]{background:#eaf4ed}
+.member-annotation-actions{display:flex;gap:3px;flex-shrink:0}
+.member-annotation-actions button{padding:4px;border-color:transparent;background:transparent}
+.member-annotation-actions .annotation-remove:hover{color:#a73243;background:#fff1f2}
+.member-annotation-branch .member-annotation-empty{margin:0;padding:4px 10px 9px;color:#657e72;font-size:10px}
+.member-annotation .embedded-editor{position:static;z-index:auto;width:auto;margin:0 0 7px;padding:8px;box-shadow:none}
+.member-annotation .annotation-position{margin:0 0 6px;font-size:10px;padding:4px 7px}
