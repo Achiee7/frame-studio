@@ -1,5 +1,5 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
-import type {PointerEvent as ReactPointerEvent} from 'react';
+import type {PointerEvent as ReactPointerEvent,ReactNode} from 'react';
 import {Box,Maximize,ZoomIn,ZoomOut} from 'lucide-react';
 import type {SpatialMember,SpatialNode,Vec3} from './spatial-model';
 import {SupportGlyph} from './support-symbol';
@@ -10,18 +10,21 @@ import type {CanvasSize,ScreenPoint,SpatialCamera,SpatialPlane,ViewName} from '.
 import './spatial-canvas.css';
 
 export type {SpatialPlane} from './spatial-projection';
-export type SpatialTool = 'select'|'beam'|'strut'|'joint'|'orbit'|'pan';
+export type SpatialTool = 'select'|'beam'|'strut'|'joint'|'orbit'|'pan'|'dimension'|'constraint';
 export type SpatialSelection = {type:'node'|'member';id:string}|null;
 export type SpatialCanvasProps = {
   nodes:SpatialNode[];members:SpatialMember[];tool:SpatialTool;plane:SpatialPlane;offset:number;snap:number;
   start?:Vec3|null;selection?:SpatialSelection;showGrid?:boolean;showNames?:boolean;
   onPoint:(point:Vec3,nodeId?:string)=>void;
   onSelect:(selection:SpatialSelection)=>void;
+  highlights?:NonNullable<SpatialSelection>[];
+  onSketchPick?:(selection:SpatialSelection,at:ScreenPoint,shortcut:boolean)=>void;
+  renderOverlay?:(project:(p:Vec3)=>ScreenPoint,viewport:CanvasSize)=>ReactNode;
   onMemberPoint?:(memberId:string,point:Vec3)=>void;
 };
 
 type Hit = {type:'node'|'member'|'intersection'|'plane';id:string;point:Vec3;distance:number;depth:number};
-type Gesture = {id:number;origin:ScreenPoint;last:ScreenPoint;mode:'pan'|'orbit'|'pick';moved:boolean};
+type Gesture = {id:number;origin:ScreenPoint;last:ScreenPoint;mode:'pan'|'orbit'|'pick';moved:boolean;shortcut:boolean};
 const axisColor={x:'#b56d53',y:'#58865a',z:'#5987b0'};
 const axes=['x','y','z'] as const;
 const centerOf=(s:CanvasSize)=>({x:s.width/2,y:s.height/2});
@@ -71,16 +74,18 @@ function ViewAxes({camera}:{camera:SpatialCamera}){
   </svg>;
 }
 
-export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,selection,showGrid=true,showNames=true,onPoint,onSelect,onMemberPoint}:SpatialCanvasProps) {
+export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,selection,showGrid=true,showNames=true,onPoint,onSelect,onSketchPick,highlights=[],renderOverlay,onMemberPoint}:SpatialCanvasProps) {
   const svgRef=useRef<SVGSVGElement>(null),gesture=useRef<Gesture|null>(null),didFit=useRef(false);
   const [size,setSize]=useState<CanvasSize>({width:800,height:600});
   const [camera,setCamera]=useState<SpatialCamera>(initialCamera);
   const [pointer,setPointer]=useState<ScreenPoint|null>(null);
-  const [picker,setPicker]=useState<{screen:ScreenPoint;hits:Hit[]}|null>(null);
+  const [picker,setPicker]=useState<{screen:ScreenPoint;hits:Hit[];shortcut:boolean}|null>(null);
   const [dragging,setDragging]=useState(false);
   const units=useUnits(),unit=units.length;
   const number=(v:number)=>settingNumber(v/lengthUnits[unit],units,false);
   const coordinates=(p:Vec3)=>axes.map(axis=>axis.toUpperCase()+' '+number(p[axis])).join('  ·  ')+' '+unit;
+  const sketchTool=tool==='constraint'||tool==='dimension';
+  const [modified,setModified]=useState(false);
   const drawing=tool==='beam'||tool==='strut'||tool==='joint';
 
   useLayoutEffect(()=>{
@@ -123,13 +128,13 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
   const cameraView=(Object.keys(directions) as ViewName[]).find(name=>Math.cos(camera.yaw-directions[name].yaw)>.999999&&Math.abs(camera.pitch-directions[name].pitch)<.001);
   const planeEdgeOn=!workplanePoint(centerOf(size),camera,size,plane,offset);
 
-  function hitsAt(p:ScreenPoint):Hit[]{
+  function hitsAt(p:ScreenPoint,shortcut=false):Hit[]{
     const hits:Hit[]=[];
     for(const {node,screen} of projected){
       const distance=Math.hypot(screen.x-p.x,screen.y-p.y);
       if(distance<=10)hits.push({type:'node',id:node.id,point:node,distance,depth:screen.depth});
     }
-    if(!hits.length&&(tool==='select'||drawing)){
+    if(!hits.length&&(tool==='select'||drawing||sketchTool||shortcut)){
       const nearby:typeof segments=[];
       for(const segment of segments){
         const {member,a,b}=segment;
@@ -142,7 +147,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
         hits.push({type:'member',id:member.id,point,distance,depth:a.screen.depth+t*(b.screen.depth-a.screen.depth)});
         nearby.push(segment);
       }
-      if(drawing&&nearby.length>1){
+      if(drawing&&!shortcut&&nearby.length>1){
         const joined=new Set<string>(),crossings:Hit[]=[];
         for(let i=0;i<nearby.length;i++)for(let j=i+1;j<nearby.length;j++){
           const a=nearby[i],b=nearby[j];
@@ -165,17 +170,23 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     // Looking straight down on two storeys can put a new upper joint and an
     // existing lower joint on the same pixel. Offer both physical locations.
     const normal=planeAxes[plane][2];
-    if(drawing&&planePoint&&near.every(hit=>Math.abs(hit.point[normal]-offset)>1e-6)){
+    if(drawing&&!shortcut&&planePoint&&near.every(hit=>Math.abs(hit.point[normal]-offset)>1e-6)){
       near.push({type:'plane',id:plane+' plane',point:planePoint,distance:0,depth:0});
     }
     return near;
   }
-  const hover=pointer&&!dragging&&!picker&&(drawing||tool==='select')?hitsAt(pointer):[];
+  const hover=pointer&&!dragging&&!picker&&(drawing||sketchTool||modified||tool==='select')?hitsAt(pointer,modified):[];
   const target=hover.length===1?hover[0]:null;
   const targetScreen=target&&project3D(target.point,camera,size);
   const startScreen=start&&project3D(start,camera,size);
-  function choose(hit:Hit|undefined){
+  function choose(hit:Hit|undefined,screen:ScreenPoint,shortcut:boolean){
     setPicker(null);
+    if(onSketchPick && (shortcut||sketchTool)) {
+      const ref=hit&&(hit.type==='member'||hit.type==='node')?{type:hit.type,id:hit.id}:null;
+      const rect=svgRef.current!.getBoundingClientRect();
+      onSketchPick(ref,{x:rect.left+screen.x,y:rect.top+screen.y},shortcut);
+      return;
+    }
     if(tool==='select')onSelect(hit&&(hit.type==='node'||hit.type==='member')?{type:hit.type,id:hit.id}:null);
     if(drawing&&hit){
       if(tool==='joint'&&hit.type==='member'&&onMemberPoint)onMemberPoint(hit.id,hit.point);
@@ -189,17 +200,18 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     if(gesture.current||e.button>2)return;
     const p=local(e);
     setPicker(null);e.currentTarget.focus({preventScroll:true});e.currentTarget.setPointerCapture(e.pointerId);
-    const mode=e.button===1||e.shiftKey||tool==='pan'?'pan':e.button===2||e.altKey||tool==='orbit'?'orbit':'pick';
-    gesture.current={id:e.pointerId,origin:p,last:p,mode,moved:false};
+    const shortcut=!!onSketchPick&&e.button===0&&(e.ctrlKey||e.metaKey);
+    const mode=shortcut?'pick':e.button===1||e.shiftKey||tool==='pan'?'pan':e.button===2||e.altKey||tool==='orbit'?'orbit':'pick';
+    gesture.current={id:e.pointerId,origin:p,last:p,mode,moved:false,shortcut};
     setPointer(p);
   }
   function move(e:ReactPointerEvent<SVGSVGElement>){
-    const g=gesture.current,p=local(e);setPointer(p);
+    const g=gesture.current,p=local(e);setPointer(p);setModified(!!onSketchPick&&(e.ctrlKey||e.metaKey));
     if(!g||g.id!==e.pointerId)return;
     if(!g.moved&&Math.hypot(p.x-g.origin.x,p.y-g.origin.y)<4)return;
     g.moved=true;const dx=p.x-g.last.x,dy=p.y-g.last.y;g.last=p;setDragging(true);
     if(g.mode==='pan')setCamera(c=>panCamera(c,size,dx,dy));
-    else if(g.mode==='orbit'||(g.mode==='pick'&&tool==='select'))setCamera(c=>({...c,
+    else if(g.mode==='orbit'||(g.mode==='pick'&&tool==='select'&&!g.shortcut))setCamera(c=>({...c,
       yaw:c.yaw-dx*.008,pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,c.pitch+dy*.008))}));
   }
   function end(e:ReactPointerEvent<SVGSVGElement>){
@@ -207,16 +219,16 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     gesture.current=null;setDragging(false);
     if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);
     if(g.moved||g.mode!=='pick')return;
-    const p=local(e),hits=hitsAt(p);
-    if(hits.length>1){setPicker({screen:p,hits});return;}
-    choose(hits[0]);
+    const p=local(e),hits=hitsAt(p,g.shortcut);
+    if(hits.length>1){setPicker({screen:p,hits,shortcut:g.shortcut});return;}
+    choose(hits[0],p,g.shortcut);
   }
   function align(view:ViewName){setPicker(null);setCamera(c=>fitCamera({...c,...directions[view]},nodes,size));}
   function fit(){setPicker(null);setCamera(c=>fitCamera(c,nodes,size));}
   function zoom(factor:number){setPicker(null);setCamera(c=>zoomCamera(c,size,centerOf(size),factor));}
 
   return <div className="sp-canvas">
-    <svg ref={svgRef} className={'sp-canvas-drawing sp-canvas-tool-'+tool+(dragging?' is-dragging':'')} tabIndex={0}
+    <svg ref={svgRef} data-sketch-surface="3D" className={'sp-canvas-drawing sp-canvas-tool-'+tool+(dragging?' is-dragging':'')} tabIndex={0}
       role="application" aria-label="Interactive 3D frame drawing" viewBox={`0 0 ${size.width} ${size.height}`}
       onPointerDown={begin} onPointerMove={move} onPointerUp={end}
       onPointerCancel={()=>{gesture.current=null;setDragging(false);setPointer(null);}}
@@ -224,7 +236,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       onKeyDown={e=>{if(e.key==='Escape')setPicker(null);if(e.key.toLowerCase()==='f'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fit();}}}>
       {showGrid&&<PlaneGrid camera={camera} size={size} plane={plane} offset={offset} snap={snap}/>}
       {segments.map(({member,a,b})=>{
-        const active=selection?.type==='member'&&selection.id===member.id;
+        const active=selection?.type==='member'&&selection.id===member.id||highlights.some(p=>p.type==='member'&&p.id===member.id);
         const highlighted=hover.some(h=>h.type==='member'&&h.id===member.id);
         const color=active?'#b76520':highlighted?'#16745d':member.kind==='strut'?'#526c5e':'#284c41';
         return <g key={member.id} data-member={member.id} aria-label={member.id+' '+member.kind}>
@@ -238,7 +250,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
         <circle cx={startScreen.x} cy={startScreen.y} r="6" strokeWidth="2"/>
       </g>}
       {projected.map(({node,screen})=>{
-        const active=selection?.type==='node'&&selection.id===node.id;
+        const active=selection?.type==='node'&&selection.id===node.id||highlights.some(p=>p.type==='node'&&p.id===node.id);
         const hot=hover.some(h=>h.type==='node'&&h.id===node.id);
         return <g key={node.id} transform={`translate(${screen.x} ${screen.y})`} data-node={node.id} aria-label={node.id+' '+node.joint+' joint'}>
           {node.support!=='free'&&<g transform="scale(.72)" color="#647b6e"><SupportGlyph type={node.support}/></g>}
@@ -248,6 +260,16 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
           {showNames&&<text className="sp-node-label" x="8" y="-7">{node.id}</text>}
         </g>;
       })}
+      {onSketchPick&&(sketchTool||modified||tool==='select')&&(()=>{
+        const p=project3D({x:0,y:0,z:0},camera,size);
+        return <g data-origin="true" aria-label="3D sketch origin" transform={`translate(${p.x} ${p.y})`}
+          onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();onSketchPick({type:'node',id:'@origin'},{x:e.clientX,y:e.clientY},e.ctrlKey||e.metaKey);}}>
+          <path d="M-6 0h12 M0 -6v12" fill="none" stroke="#977bb0" pointerEvents="none"/>
+          <rect x="-47" y="6" width="41" height="17" rx="4" fill="#faf7ff" stroke={highlights.some(p=>p.id==='@origin')?'#7952aa':'#d8cde4'} cursor="pointer"/>
+          <text x="-26" y="18" textAnchor="middle" style={{fill:'#785d90'}}>Origin</text>
+        </g>;
+      })()}
+      {renderOverlay?.(p=>project3D(p,camera,size),size)}
       {targetScreen&&drawing&&target?.type!=='node'&&<g transform={`translate(${targetScreen.x} ${targetScreen.y})`} stroke="#b9722e" fill="#fff">
         <circle r="3.5"/><path d="M-10 0h5m10 0h5M0 -10v5m0 10v5" fill="none"/>
       </g>}
@@ -271,10 +293,10 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       {target.type!=='plane'&&<strong>{target.id} · </strong>}{coordinates(target.point)}
       {start&&<span>Length {number(lengthOf(start,target.point))} {unit}</span>}
     </div>}
-    {picker&&<div className="sp-canvas-picker" role="group" aria-label="Choose overlapping geometry"
+    {picker&&<div className="sp-canvas-picker" data-sketch-surface="picker" role="group" aria-label="Choose overlapping geometry"
       style={{left:Math.max(5,Math.min(picker.screen.x+10,size.width-245)),top:Math.max(5,Math.min(picker.screen.y+10,size.height-175))}}>
       <strong>Choose at this position</strong>
-      {picker.hits.map(hit=><button key={hit.type+hit.id} onClick={()=>choose(hit)}><b>{hit.id}</b><span>{coordinates(hit.point)}</span></button>)}
+      {picker.hits.map(hit=><button key={hit.type+hit.id} onClick={()=>choose(hit,picker.screen,picker.shortcut)}><b>{hit.id}</b><span>{coordinates(hit.point)}</span></button>)}
       <button onClick={()=>setPicker(null)}>Cancel</button>
     </div>}
   </div>;
