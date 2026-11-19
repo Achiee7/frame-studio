@@ -4,6 +4,8 @@ import {validUnits} from './units.ts';
 import type {UnitSettings} from './units.ts';
 import {validSection} from './sections.ts';
 import type {SectionSpec} from './sections.ts';
+import {validSpatialModel} from './spatial-model.ts';
+import type {SpatialModel} from './spatial-model.ts';
 export type Joint = 'rigid'|'pin'|'hinge';
 export type Support = 'free'|'pinned'|'roller'|'rollerX'|'fixed'|'guided'|'spring';
 export type Node = {id:string;x:number;y:number;joint:Joint;support:Support;spring?:number;settlement?:number};
@@ -15,7 +17,7 @@ export type CadDimension = {id:string;kind:'length'|'aligned'|'horizontal'|'vert
 export type SketchConstraint={suppressed?:boolean;scope?:'points'|'members';id:string;type:'horizontal'|'vertical'|'equal'|'parallel'|'perpendicular'|'collinear'|'coincident'|'pointOnMember'|'midpoint';a:string;b?:string;spanEnd?:string};
 export const ORIGIN='@origin';
 export function cadPoint(m:Model,id:string){return id===ORIGIN?{id:ORIGIN,x:0,y:0}:m.nodes.find(n=>n.id===id)!;}
-export type Model = {units?:Partial<UnitSettings>;sketchConstraints?:SketchConstraint[];nodes:Node[];beams:Beam[];loads:Load[];constraints?:GeometryConstraint[];dimensions?:CadDimension[];dimensionAnchor?:string;dimensionUnits?:'m'|'mm'};
+export type Model = {spatial?:SpatialModel;units?:Partial<UnitSettings>;sketchConstraints?:SketchConstraint[];nodes:Node[];beams:Beam[];loads:Load[];constraints?:GeometryConstraint[];dimensions?:CadDimension[];dimensionAnchor?:string;dimensionUnits?:'m'|'mm'};
 export const uid=()=>crypto.randomUUID().slice(0,8);
 export const profiles=[{name:'HEA 120',A:25.3,I:606},{name:'HEA 160',A:38.8,I:1670},{name:'HEA 200',A:53.8,I:3692},{name:'IPE 200',A:28.5,I:1943},{name:'IPE 300',A:53.8,I:8356}]; // cm², cm⁴
 export const beamDefaults={kind:'beam' as const,profile:'HEA 120',E:210000000,A:0.00253,I:0.00000606}; // kN, m
@@ -28,6 +30,7 @@ export function example(name='cross'):Model {
 export function validModel(v:any):v is Model {
  const finite=(x:any)=>typeof x==='number'&&Number.isFinite(x)&&Math.abs(x)<1e12;
  if(!v||!validUnits(v.units)||!Array.isArray(v.nodes)||!Array.isArray(v.beams)||!Array.isArray(v.loads)||v.nodes.length>150||v.beams.length>150||v.loads.length>300)return false;
+ if(v.spatial!==undefined&&!validSpatialModel(v.spatial))return false;
  const ids=new Set(v.nodes.map((n:any)=>n.id));if(ids.size!==v.nodes.length)return false;
  const bids=new Set(v.beams.map((b:any)=>b.id));if(bids.size!==v.beams.length)return false;
  if(v.constraints!==undefined){if(!Array.isArray(v.constraints)||v.constraints.length>150)return false;try{constraintOrder(v);}catch{return false;}}

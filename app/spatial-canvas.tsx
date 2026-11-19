@@ -1,0 +1,281 @@
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import type {PointerEvent as ReactPointerEvent} from 'react';
+import {Box,Maximize,ZoomIn,ZoomOut} from 'lucide-react';
+import type {SpatialMember,SpatialNode,Vec3} from './spatial-model';
+import {SupportGlyph} from './support-symbol';
+import {useUnits} from './unit-context';
+import {lengthUnits,settingNumber} from './units';
+import {directions,fitCamera,initialCamera,nearbySpatialCrossing,panCamera,planeAxes,project3D,workplanePoint,zoomCamera} from './spatial-projection';
+import type {CanvasSize,ScreenPoint,SpatialCamera,SpatialPlane,ViewName} from './spatial-projection';
+import './spatial-canvas.css';
+
+export type {SpatialPlane} from './spatial-projection';
+export type SpatialTool = 'select'|'beam'|'strut'|'joint'|'orbit'|'pan';
+export type SpatialSelection = {type:'node'|'member';id:string}|null;
+export type SpatialCanvasProps = {
+  nodes:SpatialNode[];members:SpatialMember[];tool:SpatialTool;plane:SpatialPlane;offset:number;snap:number;
+  start?:Vec3|null;selection?:SpatialSelection;showGrid?:boolean;showNames?:boolean;
+  onPoint:(point:Vec3,nodeId?:string)=>void;
+  onSelect:(selection:SpatialSelection)=>void;
+  onMemberPoint?:(memberId:string,point:Vec3)=>void;
+};
+
+type Hit = {type:'node'|'member'|'intersection'|'plane';id:string;point:Vec3;distance:number;depth:number};
+type Gesture = {id:number;origin:ScreenPoint;last:ScreenPoint;mode:'pan'|'orbit'|'pick';moved:boolean};
+const axisColor={x:'#b56d53',y:'#58865a',z:'#5987b0'};
+const axes=['x','y','z'] as const;
+const centerOf=(s:CanvasSize)=>({x:s.width/2,y:s.height/2});
+const lengthOf=(a:Vec3,b:Vec3)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+
+function gridStep(minimum:number) {
+  const decade=10**Math.floor(Math.log10(minimum));
+  return ([1,2,5,10].find(factor=>factor*decade>=minimum)??10)*decade;
+}
+function PlaneGrid({camera,size,plane,offset,snap}:{camera:SpatialCamera;size:CanvasSize;plane:SpatialPlane;offset:number;snap:number}) {
+  const corners=[{x:0,y:0},{x:size.width,y:0},{x:0,y:size.height},{x:size.width,y:size.height}].map(
+    p=>workplanePoint(p,camera,size,plane,offset)
+  );
+  if(corners.some(p=>!p))return null;
+  const [u,v,n]=planeAxes[plane];
+  const us=corners.map(p=>p![u]),vs=corners.map(p=>p![v]);
+  const lowU=Math.min(...us),highU=Math.max(...us),lowV=Math.min(...vs),highV=Math.max(...vs);
+  const ideal=Math.max(26*camera.height/size.height,(highU-lowU)/90,(highV-lowV)/90);
+  const step=snap>0?Math.max(1,gridStep(ideal/snap))*snap:gridStep(ideal);
+  const lines=[];
+  for(const axis of [u,v]){
+    const other=axis===u?v:u,low=axis===u?lowU:lowV,high=axis===u?highU:highV;
+    const first=Math.ceil(low/step),count=Math.min(92,Math.max(0,Math.floor(high/step)-first+1));
+    for(let i=0;i<count;i++){
+      const j=first+i;
+      const p={x:0,y:0,z:0};p[n]=offset;p[axis]=j*step;p[other]=other===u?lowU:lowV;
+      const q={...p,[other]:other===u?highU:highV};
+      const a=project3D(p,camera,size),b=project3D(q,camera,size);
+      lines.push(<line key={axis+i} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+        stroke={j===0?axisColor[other]:j%5===0?'#c8d8ce':'#dee8e1'} opacity={j===0?.67:j%5===0?.85:.8}/>);
+    }
+  }
+  return <g aria-hidden="true" pointerEvents="none">{lines}</g>;
+}
+
+function ViewAxes({camera}:{camera:SpatialCamera}){
+  const size={width:86,height:80},view={...camera,target:{x:0,y:0,z:0},height:3},o=centerOf(size);
+  return <svg className="sp-canvas-axes" viewBox="0 0 86 80" role="img" aria-label="3D orientation axes">
+    {axes.map(axis=>{
+      const p={x:0,y:0,z:0};p[axis]=1;
+      const q=project3D(p,view,size);
+      // In an aligned view the third axis points towards the viewer.
+      if(Math.hypot(q.x-o.x,q.y-o.y)<2)return null;
+      return <g key={axis} stroke={axisColor[axis]}><line x1={o.x} y1={o.y} x2={q.x} y2={q.y} strokeWidth="1.7"/>
+        <text x={q.x+(q.x-o.x)*.34} y={q.y+(q.y-o.y)*.34+3} textAnchor="middle" fill={axisColor[axis]} stroke="none">{axis.toUpperCase()}</text></g>;
+    })}<circle cx={o.x} cy={o.y} r="2.5" fill="#607565"/>
+  </svg>;
+}
+
+export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,selection,showGrid=true,showNames=true,onPoint,onSelect,onMemberPoint}:SpatialCanvasProps) {
+  const svgRef=useRef<SVGSVGElement>(null),gesture=useRef<Gesture|null>(null),didFit=useRef(false);
+  const [size,setSize]=useState<CanvasSize>({width:800,height:600});
+  const [camera,setCamera]=useState<SpatialCamera>(initialCamera);
+  const [pointer,setPointer]=useState<ScreenPoint|null>(null);
+  const [picker,setPicker]=useState<{screen:ScreenPoint;hits:Hit[]}|null>(null);
+  const [dragging,setDragging]=useState(false);
+  const units=useUnits(),unit=units.length;
+  const number=(v:number)=>settingNumber(v/lengthUnits[unit],units,false);
+  const coordinates=(p:Vec3)=>axes.map(axis=>axis.toUpperCase()+' '+number(p[axis])).join('  ·  ')+' '+unit;
+  const drawing=tool==='beam'||tool==='strut'||tool==='joint';
+
+  useLayoutEffect(()=>{
+    const element=svgRef.current;
+    if(!element)return;
+    const measure=()=>{
+      const rect=element.getBoundingClientRect();
+      if(rect.width>0&&rect.height>0)setSize(old=>old.width===rect.width&&old.height===rect.height?old:{width:rect.width,height:rect.height});
+    };
+    measure();
+    const observer=new ResizeObserver(measure);observer.observe(element);
+    return ()=>observer.disconnect();
+  },[]);
+  useLayoutEffect(()=>{
+    if(didFit.current)return;
+    const rect=svgRef.current?.getBoundingClientRect();
+    if(!rect?.width||!rect.height)return;
+    didFit.current=true;
+    if(nodes.length)setCamera(c=>fitCamera(c,nodes,{width:rect.width,height:rect.height}));
+  },[nodes,size]);
+  useEffect(()=>{
+    const el=svgRef.current;if(!el)return;
+    function wheel(e:WheelEvent){
+      e.preventDefault();
+      const r=el!.getBoundingClientRect();
+      const px=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?r.height:1);
+      setPicker(null);
+      setCamera(c=>zoomCamera(c,{width:r.width,height:r.height},{x:e.clientX-r.left,y:e.clientY-r.top},Math.exp(Math.max(-2,Math.min(2,px*.0015)))));
+    }
+    el.addEventListener('wheel',wheel,{passive:false});
+    return ()=>el.removeEventListener('wheel',wheel);
+  },[]);
+  useEffect(()=>{setPicker(null);},[tool,plane,offset,nodes,members]);
+  const projected=nodes.map(node=>({node,screen:project3D(node,camera,size)})).sort((a,b)=>a.screen.depth-b.screen.depth);
+  const byId=new Map(projected.map(item=>[item.node.id,item]));
+  const segments=members.flatMap(member=>{
+    const a=byId.get(member.a),b=byId.get(member.b);
+    return a&&b?[{member,a,b,depth:(a.screen.depth+b.screen.depth)/2}]:[];
+  }).sort((a,b)=>a.depth-b.depth);
+  const cameraView=(Object.keys(directions) as ViewName[]).find(name=>Math.cos(camera.yaw-directions[name].yaw)>.999999&&Math.abs(camera.pitch-directions[name].pitch)<.001);
+  const planeEdgeOn=!workplanePoint(centerOf(size),camera,size,plane,offset);
+
+  function hitsAt(p:ScreenPoint):Hit[]{
+    const hits:Hit[]=[];
+    for(const {node,screen} of projected){
+      const distance=Math.hypot(screen.x-p.x,screen.y-p.y);
+      if(distance<=10)hits.push({type:'node',id:node.id,point:node,distance,depth:screen.depth});
+    }
+    if(!hits.length&&(tool==='select'||drawing)){
+      const nearby:typeof segments=[];
+      for(const segment of segments){
+        const {member,a,b}=segment;
+        const dx=b.screen.x-a.screen.x,dy=b.screen.y-a.screen.y,l2=dx*dx+dy*dy;
+        if(l2<.0001)continue;
+        const t=Math.max(0,Math.min(1,((p.x-a.screen.x)*dx+(p.y-a.screen.y)*dy)/l2));
+        const distance=Math.hypot(a.screen.x+t*dx-p.x,a.screen.y+t*dy-p.y);
+        if(distance>7)continue;
+        const point={x:a.node.x+(b.node.x-a.node.x)*t,y:a.node.y+(b.node.y-a.node.y)*t,z:a.node.z+(b.node.z-a.node.z)*t};
+        hits.push({type:'member',id:member.id,point,distance,depth:a.screen.depth+t*(b.screen.depth-a.screen.depth)});
+        nearby.push(segment);
+      }
+      if(drawing&&nearby.length>1){
+        const joined=new Set<string>(),crossings:Hit[]=[];
+        for(let i=0;i<nearby.length;i++)for(let j=i+1;j<nearby.length;j++){
+          const a=nearby[i],b=nearby[j];
+          const snap=nearbySpatialCrossing(a.a.node,a.b.node,b.a.node,b.b.node,p,camera,size);
+          if(!snap)continue;
+          joined.add(a.member.id);joined.add(b.member.id);
+          if(!crossings.some(hit=>lengthOf(hit.point,snap.point)<1e-6)){
+            crossings.push({type:'intersection',id:a.member.id+' × '+b.member.id,...snap});
+          }
+        }
+        // At a physical crossing the snap is the exact common point. Projected
+        // crossings at different depths retain their separate member choices.
+        for(let i=hits.length-1;i>=0;i--)if(joined.has(hits[i].id))hits.splice(i,1);
+        hits.push(...crossings);
+      }
+    }
+    hits.sort((a,b)=>a.distance-b.distance||b.depth-a.depth);
+    const near=hits.filter(hit=>hit.distance<=hits[0].distance+2);
+    const planePoint=workplanePoint(p,camera,size,plane,offset,snap);
+    // Looking straight down on two storeys can put a new upper joint and an
+    // existing lower joint on the same pixel. Offer both physical locations.
+    const normal=planeAxes[plane][2];
+    if(drawing&&planePoint&&near.every(hit=>Math.abs(hit.point[normal]-offset)>1e-6)){
+      near.push({type:'plane',id:plane+' plane',point:planePoint,distance:0,depth:0});
+    }
+    return near;
+  }
+  const hover=pointer&&!dragging&&!picker&&(drawing||tool==='select')?hitsAt(pointer):[];
+  const target=hover.length===1?hover[0]:null;
+  const targetScreen=target&&project3D(target.point,camera,size);
+  const startScreen=start&&project3D(start,camera,size);
+  function choose(hit:Hit|undefined){
+    setPicker(null);
+    if(tool==='select')onSelect(hit&&(hit.type==='node'||hit.type==='member')?{type:hit.type,id:hit.id}:null);
+    if(drawing&&hit){
+      if(tool==='joint'&&hit.type==='member'&&onMemberPoint)onMemberPoint(hit.id,hit.point);
+      else onPoint(hit.point,hit.type==='node'?hit.id:undefined);
+    }
+  }
+  function local(e:ReactPointerEvent<SVGSVGElement>){
+    const r=e.currentTarget.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};
+  }
+  function begin(e:ReactPointerEvent<SVGSVGElement>){
+    if(gesture.current||e.button>2)return;
+    const p=local(e);
+    setPicker(null);e.currentTarget.focus({preventScroll:true});e.currentTarget.setPointerCapture(e.pointerId);
+    const mode=e.button===1||e.shiftKey||tool==='pan'?'pan':e.button===2||e.altKey||tool==='orbit'?'orbit':'pick';
+    gesture.current={id:e.pointerId,origin:p,last:p,mode,moved:false};
+    setPointer(p);
+  }
+  function move(e:ReactPointerEvent<SVGSVGElement>){
+    const g=gesture.current,p=local(e);setPointer(p);
+    if(!g||g.id!==e.pointerId)return;
+    if(!g.moved&&Math.hypot(p.x-g.origin.x,p.y-g.origin.y)<4)return;
+    g.moved=true;const dx=p.x-g.last.x,dy=p.y-g.last.y;g.last=p;setDragging(true);
+    if(g.mode==='pan')setCamera(c=>panCamera(c,size,dx,dy));
+    else if(g.mode==='orbit'||(g.mode==='pick'&&tool==='select'))setCamera(c=>({...c,
+      yaw:c.yaw-dx*.008,pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,c.pitch+dy*.008))}));
+  }
+  function end(e:ReactPointerEvent<SVGSVGElement>){
+    const g=gesture.current;if(!g||g.id!==e.pointerId)return;
+    gesture.current=null;setDragging(false);
+    if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);
+    if(g.moved||g.mode!=='pick')return;
+    const p=local(e),hits=hitsAt(p);
+    if(hits.length>1){setPicker({screen:p,hits});return;}
+    choose(hits[0]);
+  }
+  function align(view:ViewName){setPicker(null);setCamera(c=>fitCamera({...c,...directions[view]},nodes,size));}
+  function fit(){setPicker(null);setCamera(c=>fitCamera(c,nodes,size));}
+  function zoom(factor:number){setPicker(null);setCamera(c=>zoomCamera(c,size,centerOf(size),factor));}
+
+  return <div className="sp-canvas">
+    <svg ref={svgRef} className={'sp-canvas-drawing sp-canvas-tool-'+tool+(dragging?' is-dragging':'')} tabIndex={0}
+      role="application" aria-label="Interactive 3D frame drawing" viewBox={`0 0 ${size.width} ${size.height}`}
+      onPointerDown={begin} onPointerMove={move} onPointerUp={end}
+      onPointerCancel={()=>{gesture.current=null;setDragging(false);setPointer(null);}}
+      onPointerLeave={()=>{if(!gesture.current)setPointer(null);}} onContextMenu={e=>e.preventDefault()}
+      onKeyDown={e=>{if(e.key==='Escape')setPicker(null);if(e.key.toLowerCase()==='f'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fit();}}}>
+      {showGrid&&<PlaneGrid camera={camera} size={size} plane={plane} offset={offset} snap={snap}/>}
+      {segments.map(({member,a,b})=>{
+        const active=selection?.type==='member'&&selection.id===member.id;
+        const highlighted=hover.some(h=>h.type==='member'&&h.id===member.id);
+        const color=active?'#b76520':highlighted?'#16745d':member.kind==='strut'?'#526c5e':'#284c41';
+        return <g key={member.id} data-member={member.id} aria-label={member.id+' '+member.kind}>
+          {(active||highlighted)&&<line x1={a.screen.x} y1={a.screen.y} x2={b.screen.x} y2={b.screen.y} stroke={color} opacity=".18" strokeWidth="8" strokeLinecap="round"/>}
+          <line x1={a.screen.x} y1={a.screen.y} x2={b.screen.x} y2={b.screen.y} stroke={color} strokeWidth={2.7} strokeLinecap="round" strokeDasharray={member.kind==='strut'?'8 4':undefined}/>
+          {showNames&&<text className="sp-member-label" x={(a.screen.x+b.screen.x)/2} y={(a.screen.y+b.screen.y)/2-7} textAnchor="middle">{member.id}</text>}
+        </g>;
+      })}
+      {startScreen&&drawing&&<g stroke="#bd732a" fill="none">
+        {targetScreen&&<line x1={startScreen.x} y1={startScreen.y} x2={targetScreen.x} y2={targetScreen.y} strokeWidth="2" strokeDasharray="6 4"/>}
+        <circle cx={startScreen.x} cy={startScreen.y} r="6" strokeWidth="2"/>
+      </g>}
+      {projected.map(({node,screen})=>{
+        const active=selection?.type==='node'&&selection.id===node.id;
+        const hot=hover.some(h=>h.type==='node'&&h.id===node.id);
+        return <g key={node.id} transform={`translate(${screen.x} ${screen.y})`} data-node={node.id} aria-label={node.id+' '+node.joint+' joint'}>
+          {node.support!=='free'&&<g transform="scale(.72)" color="#647b6e"><SupportGlyph type={node.support}/></g>}
+          {(active||hot)&&<circle r="9" fill={active?'#f3d5b3':'#bce3cf'} stroke={active?'#b76520':'#3b8469'} strokeWidth="1"/>}
+          <circle r={node.joint==='rigid'?3.5:5} fill={node.joint==='rigid'?'#295948':'#fff'} stroke="#295948" strokeWidth="1.7"/>
+          {node.joint==='pin'&&<circle r="1.6" fill="#295948"/>}
+          {showNames&&<text className="sp-node-label" x="8" y="-7">{node.id}</text>}
+        </g>;
+      })}
+      {targetScreen&&drawing&&target?.type!=='node'&&<g transform={`translate(${targetScreen.x} ${targetScreen.y})`} stroke="#b9722e" fill="#fff">
+        <circle r="3.5"/><path d="M-10 0h5m10 0h5M0 -10v5m0 10v5" fill="none"/>
+      </g>}
+    </svg>
+    <div className="sp-canvas-view" aria-label="3D view controls">
+      <Box size={15} aria-hidden="true"/>
+      <select aria-label="3D view orientation" value={cameraView??''} onChange={e=>align(e.target.value as ViewName)}>
+        {!cameraView&&<option value="" disabled>Orbit view</option>}
+        {(Object.keys(directions) as ViewName[]).map(name=><option key={name}>{name}</option>)}
+      </select>
+      <button type="button" title="Zoom out" aria-label="Zoom out in 3D" onClick={()=>zoom(1.25)}><ZoomOut size={16}/></button>
+      <button type="button" title="Zoom in" aria-label="Zoom in in 3D" onClick={()=>zoom(.8)}><ZoomIn size={16}/></button>
+      <button type="button" title="Fit model (F)" aria-label="Fit 3D model" onClick={fit}><Maximize size={15}/></button>
+    </div>
+    <ViewAxes camera={camera}/>
+    {drawing&&planeEdgeOn&&<button className="sp-canvas-plane-tip" onClick={()=>align(({XY:'Top',XZ:'Front',YZ:'Right'} as const)[plane])}>
+      View {plane} face-on to place points
+    </button>}
+    {hover.length>1&&!picker&&<div className="sp-canvas-readout">Multiple locations under the pointer · click to choose</div>}
+    {target&&drawing&&<div className="sp-canvas-readout">
+      {target.type!=='plane'&&<strong>{target.id} · </strong>}{coordinates(target.point)}
+      {start&&<span>Length {number(lengthOf(start,target.point))} {unit}</span>}
+    </div>}
+    {picker&&<div className="sp-canvas-picker" role="group" aria-label="Choose overlapping geometry"
+      style={{left:Math.max(5,Math.min(picker.screen.x+10,size.width-245)),top:Math.max(5,Math.min(picker.screen.y+10,size.height-175))}}>
+      <strong>Choose at this position</strong>
+      {picker.hits.map(hit=><button key={hit.type+hit.id} onClick={()=>choose(hit)}><b>{hit.id}</b><span>{coordinates(hit.point)}</span></button>)}
+      <button onClick={()=>setPicker(null)}>Cancel</button>
+    </div>}
+  </div>;
+}

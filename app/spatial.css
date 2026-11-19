@@ -1,0 +1,131 @@
+.sp-workspace {
+  --sp-rule:#dbe5de;
+  --sp-ink:#294d3e;
+  --sp-muted:#647a6d;
+  display:flex;
+  flex:1 1 0;
+  flex-direction:column;
+  width:100%;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+  color:var(--sp-ink);
+  background:#f6f9f6;
+}
+.sp-toolbar {
+  position:relative;
+  z-index:3;
+  display:flex;
+  align-items:center;
+  flex:none;
+  gap:3px;
+  padding:7px 14px;
+  border-bottom:1px solid var(--sp-rule);
+  background:#fff;
+}
+.sp-toolbar button,.sp-heading button,.sp-delete-row button,.sp-finish {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  border:1px solid transparent;
+  border-radius:5px;
+  background:transparent;
+  color:var(--sp-ink);
+}
+.sp-toolbar button {min-width:34px;min-height:32px;padding:5px 10px;font-size:12px}
+.sp-toolbar .sp-pane-switch {margin-right:6px;padding:5px 8px;border:1px solid var(--sp-rule)}
+.sp-toolbar .sp-tool-orbit {margin-left:8px}
+.sp-toolbar button[aria-pressed=true],.sp-planes [aria-pressed=true] {
+  color:#10644c;
+  border-color:#b6d7c6;
+  background:#e0f0e7;
+}
+.sp-toolbar button:hover,.sp-row:hover,.sp-heading button:hover,.sp-finish:hover,.sp-planes button:hover {background:#eef5ef}
+.sp-toolbar .sp-visibility {position:relative;margin-left:auto}
+.sp-visibility-menu {position:absolute;right:0;top:calc(100% + 6px);width:180px;padding:5px;border:1px solid var(--sp-rule);background:white;border-radius:7px;box-shadow:0 6px 20px #20493118}
+.sp-visibility-menu label,.sp-check {display:flex;align-items:center;gap:7px;font-size:12px}
+.sp-visibility-menu label {padding:8px 5px}
+.sp-visibility-menu input,.sp-check input {width:14px;height:14px;margin:0;accent-color:#157456}
+.sp-body {position:relative;display:flex;flex:1;min-height:0;min-width:0}
+.sp-inspector {
+  z-index:2;
+  flex:0 0 clamp(210px,21vw,265px);
+  min-height:0;
+  overflow:auto;
+  background:#fcfdfb;
+  border-right:1px solid var(--sp-rule);
+  scrollbar-width:thin;
+}
+.sp-viewport {position:relative;flex:1 1 0;min-height:0;min-width:0;overflow:hidden}
+.sp-section,.sp-tree {padding:16px}
+.sp-heading {display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:10px}
+.sp-heading h2 {display:flex;align-items:center;gap:8px;margin:0;color:#234b38;font-size:15px;font-weight:650}
+.sp-heading h2 svg {width:17px;height:17px;color:#48765f}
+.sp-heading button {width:25px;height:25px}
+.sp-inspector p {margin:8px 0 14px;font-size:12px;line-height:1.55}
+.sp-hint,.sp-field-label,.sp-field {color:var(--sp-muted)}
+.sp-field-label,.sp-field,.sp-inspector h3 {font-size:11px;font-weight:600}
+.sp-field-label,.sp-field {display:block}
+.sp-field {margin:12px 0}
+.sp-field input,.sp-field select,.sp-xyz input {
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  margin-top:5px;
+  padding:7px 8px;
+  min-height:32px;
+  background:white;
+  border:1px solid #d7e3d9;
+  border-radius:5px;
+  color:#213e30;
+  font:inherit;
+  font-size:12px;
+  font-weight:450;
+}
+.sp-field input[aria-invalid=true],.sp-xyz input[aria-invalid=true] {border-color:#c8563b}
+.sp-workspace :focus-visible {outline:2px solid #27856b;outline-offset:2px}
+.sp-planes {display:flex;margin-top:6px;gap:4px}
+.sp-planes button {flex:1;min-height:30px;border:1px solid var(--sp-rule);border-radius:5px;background:white;color:var(--sp-ink);font-size:11px;font-weight:600}
+.sp-check {margin:12px 0 8px;color:#486453}
+.sp-entry {margin-top:16px;padding-top:12px;border-top:1px solid var(--sp-rule)}
+.sp-inspector h3 {display:flex;align-items:baseline;justify-content:space-between;margin:13px 0 7px;color:#385542}
+.sp-entry h3 {margin-top:0}
+.sp-inspector h3 small {font-size:10px;color:var(--sp-muted);font-weight:450}
+.sp-xyz {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.sp-xyz label {font-size:10px;font-weight:650}
+.sp-axis-x {color:#a65048}.sp-axis-y {color:#428468}.sp-axis-z {color:#407aa0}
+.sp-coordinates small {display:block;color:#a33b2d;font-size:11px;margin-top:5px}
+.sp-action {display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:32px;margin-top:8px;border:1px solid #20654b;border-radius:5px;color:white;background:#286c52;font-size:11px}
+.sp-action:hover {background:#20593f}
+.sp-finish {min-height:30px;margin-top:5px;width:100%;font-size:11px}
+.sp-finish kbd {font-size:9px;color:var(--sp-muted)}
+.sp-length {display:flex;justify-content:space-between;gap:6px;margin:14px 0;color:var(--sp-muted);font-size:12px}
+.sp-length b {color:var(--sp-ink);font-variant-numeric:tabular-nums}
+.sp-row {display:flex;align-items:center;gap:6px;width:100%;min-height:30px;padding:4px;border:0;border-bottom:1px solid #e8eee9;background:transparent;text-align:left;color:var(--sp-ink);font-size:11px}
+.sp-row span {min-width:0;margin-left:auto;text-align:right;color:var(--sp-muted);overflow-wrap:anywhere}
+.sp-delete-row {display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:12px}
+.sp-delete-row button {min-height:28px;padding:4px 6px;font-size:11px}
+.sp-delete-row .sp-remove {color:#9c493d;border:1px solid #ead7d1}
+.sp-inspector .sp-error {margin:0 14px 12px;padding:8px 10px;border:1px solid #e5c4b9;border-radius:5px;color:#8b382b;background:#fff7f1}
+.sp-tree {border-top:1px solid var(--sp-rule)}
+.sp-tree summary {display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;font-weight:600}
+.sp-tree summary::after {content:'+';margin-left:auto;font-weight:500}
+.sp-tree[open] summary::after {content:'−'}
+.sp-status {display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;min-height:26px;padding:4px 15px;border-top:1px solid var(--sp-rule);background:white;color:var(--sp-muted);font-size:10px}
+@media(max-width:700px) {
+  .sp-toolbar {padding:5px 6px;gap:2px}
+  .sp-toolbar button {padding:4px 6px;gap:4px;font-size:10px}
+  .sp-toolbar .sp-pane-switch,.sp-toolbar .sp-tool-orbit {margin:0}
+  .sp-inspector {flex-basis:180px}
+  .sp-section,.sp-tree {padding:11px}
+}
+@media(max-width:540px) {
+  .sp-body {flex-direction:column-reverse}
+  .sp-inspector {flex:0 1 auto;max-height:32%;width:100%;border:0;border-top:1px solid var(--sp-rule)}
+  .sp-toolbar button {flex-direction:column;gap:1px;min-width:30px;min-height:34px;padding:1px 4px}
+  .sp-toolbar .sp-pane-switch {margin-right:2px}
+  .sp-planes {max-width:190px}
+  .sp-status {font-size:9px;padding:4px 6px}
+  .sp-field, .sp-check {margin:8px 0}
+}
