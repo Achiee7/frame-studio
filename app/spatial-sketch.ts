@@ -100,6 +100,19 @@ function measure(pts:Positions,kind:SpatialAction,ids:string[]) {
   if(kind==='offset')return size(minus(c,footOnLine(a,b,c,false)));
   throw Error('Choose a dimension to measure.');
 }
+/** A sketch lock fixes the stored coordinates without restraining the structural joint. */
+export function spatialPositionLocked(model:SpatialModel,id:string):boolean {
+  return model.nodes.find(node=>node.id===id)?.positionLocked===true;
+}
+export function setSpatialPositionLock(model:SpatialModel,id:string,locked:boolean):SpatialModel {
+  const point=model.nodes.find(n=>n.id===id);
+  if(!point)throw Error('Select an existing joint to lock its position.');
+  if(!!point.positionLocked===locked)return model;
+  const changed={...point};
+  if(locked)changed.positionLocked=true;
+  else delete changed.positionLocked;
+  return {...model,nodes:model.nodes.map(n=>n===point?changed:n)};
+}
 export function spatialMeasurement(model:SpatialModel,kind:SpatialAction,refs:SpatialRef[]) {
   return measure(positions(model),kind,rulePoints(model,kind,refs));
 }
@@ -230,6 +243,21 @@ function jacobian(pts:Positions,eqs:Equation[],variables:Map<string,number>):Spa
   }
   return result;
 }
+/** Derivatives of the active sketch equations, indexed by joint order and X/Y/Z.
+ * The solver perturbs coordinates to calculate these rows. Use local copies so
+ * querying the drawing's mobility never writes to the project. */
+export function spatialSketchLinearization(model:SpatialModel) {
+  const world=positions(model),variables=new Map(model.nodes.map((n,i)=>[n.id,i]));
+  return equations(model).flatMap(eq=>{
+    // All sketch equations are translation invariant when their operands,
+    // including the origin reference, are translated together.
+    const anchor=world.get(eq.points[0])!;
+    const local=new Map(eq.points.map(id=>[id,minus(world.get(id)!,anchor)]));
+    const rows=jacobian(local,[eq],variables);
+    const scale=Math.max(0,...rows.flatMap(row=>row.derivatives.map(Math.abs)));
+    return rows.map(row=>({...row,points:eq.points,scale}));
+  });
+}
 const arrayDot=(a:Float64Array,b:Float64Array)=>a.reduce((sum,x,i)=>sum+x*b[i],0);
 /** Solve the damped normal equations without allocating a dense matrix over the whole frame. */
 function correction(rows:SparseRow[],width:number,damping:number) {
@@ -286,7 +314,8 @@ function project(pts:Positions,eqs:Equation[],ids:string[]) {
 function solve(m:SpatialModel,focus:string[],preferred:string[],locked:string[]=[],reference:string[]=[]) {
   const pts=positions(m),{rows,ids}=connectedEquations(equations(m),focus);
   const old=ids.map(id=>({...pts.get(id)!}));
-  const movable=ids.filter(id=>!locked.includes(id));
+  const held=new Set([...locked,...m.nodes.filter(n=>n.positionLocked).map(n=>n.id)]);
+  const movable=ids.filter(id=>!held.has(id));
   const local=movable.filter(id=>preferred.includes(id));
   const tiers=[local,movable.filter(id=>!reference.includes(id)),movable];
   const attempted=new Set<string>();
@@ -309,6 +338,7 @@ function knownComponents(m:SpatialModel,a:string,b:string):Partial<Vec3> {
       if(!adjacent.has(from))adjacent.set(from,[]);
       adjacent.get(from)!.push({to,d});
     }
+    for(const node of m.nodes)if(node.positionLocked)edge(SPATIAL_ORIGIN,node.id,node[axis]);
     for(const rule of m.rules??[]){
       if(!active(rule))continue;
       const kind=rule.kind;
@@ -365,19 +395,24 @@ function fixedMeasurement(base:SpatialModel,rule:SpatialRule) {
 function seed(m:SpatialModel,base:SpatialModel,r:SpatialRule):string[] {
   const pts=positions(m),ids=r.points.slice(),kind=r.kind;
   let [aId,bId,cId,dId]=ids;
-  const originalA=aId,originalB=bId;
-  const direction=(r.sense??1)*(bId===SPATIAL_ORIGIN?-1:1);
-  if(bId===SPATIAL_ORIGIN)[aId,bId]=[bId,aId];
+  const held=new Set([SPATIAL_ORIGIN,...m.nodes.filter(n=>n.positionLocked).map(n=>n.id)]);
+  // A fixed second member is the reference regardless of selection order.
+  if(ids.length===4&&held.has(cId)&&held.has(dId))[aId,bId,cId,dId]=[cId,dId,aId,bId];
+  const reversePair=ids.length===2&&held.has(bId)&&!held.has(aId);
+  const direction=(r.sense??1)*(reversePair?-1:1);
+  if(reversePair)[aId,bId]=[bId,aId];
   const a=pts.get(aId)!,b=pts.get(bId)!,c=pts.get(cId),d=pts.get(dId);
   const ab=minus(b,a),L=size(ab),u=unit(ab);
-  const assign=(id:string,p:Vec3)=>{if(id!==SPATIAL_ORIGIN){const n=pts.get(id)!;n.x=p.x;n.y=p.y;n.z=p.z;}};
+  const assign=(id:string,p:Vec3)=>{if(!held.has(id)){const n=pts.get(id)!;n.x=p.x;n.y=p.y;n.z=p.z;}};
   if(kind==='connect')assign(bId,a);
   else if(isAxisRule(kind)){
     const axis=axisOf[kind as 'alongX'|'alongY'|'alongZ'];
     const coordinate=r.refs.length===2&&Math.abs(ab[axis])>memberTolerance?b[axis]:a[axis]+(ab[axis]<0?-L:L);
     assign(bId,{...a,[axis]:coordinate});
-  }else if(isComponent(kind))b[axisOf[kind as 'dx'|'dy'|'dz']]=a[axisOf[kind as 'dx'|'dy'|'dz']]+direction*r.value!;
-  else if(kind==='length'){
+  }else if(isComponent(kind)){
+    const axis=axisOf[kind as 'dx'|'dy'|'dz'];
+    assign(bId,{...b,[axis]:a[axis]+direction*r.value!});
+  }else if(kind==='length'){
     const known=knownComponents(base,aId,bId),free=axes.filter(axis=>known[axis]===undefined);
     const min2=axes.reduce((acc,axis)=>acc+(known[axis]??0)**2,0);
     const newLength=r.value!;
@@ -398,7 +433,7 @@ function seed(m:SpatialModel,base:SpatialModel,r:SpatialRule):string[] {
       goal=plus(a,scale(u,size(minus(foot,a))<=memberTolerance?inset:L-inset));
     }
     if(kind==='offset')goal=plus(foot,scale(normalTo(u,minus(c!,foot)),r.value!));
-    const moveLine=cId===SPATIAL_ORIGIN||r.refs[1].type==='member';
+    const moveLine=held.has(cId)||r.refs[1].type==='member'&&!held.has(aId)&&!held.has(bId);
     if(moveLine){
       const delta=minus(c!,goal);
       assign(aId,plus(a,delta));assign(bId,plus(b,delta));return [aId,bId];
@@ -406,7 +441,7 @@ function seed(m:SpatialModel,base:SpatialModel,r:SpatialRule):string[] {
     assign(cId,goal);return [cId];
   }else if(c&&d){
     // Keep a shared joint on the reference member and rotate the other end about it.
-    const reversed=dId===originalA||dId===originalB;
+    const reversed=dId===aId||dId===bId||held.has(dId)&&!held.has(cId);
     const anchor=reversed?d:c,moving=reversed?c:d;
     const pivotId=reversed?dId:cId,tipId=reversed?cId:dId;
     const cd=minus(moving,anchor),T=size(cd);
@@ -457,6 +492,10 @@ function physicalMerge(m:SpatialModel,r:SpatialRule):SpatialModel {
   if(left.joint!==right.joint&&attached(keep)&&attached(remove))throw Error('Choose matching joint types before connecting the two frames.');
   if(left.support==='free'){left.support=right.support;if(right.spring!==undefined)left.spring=right.spring;}
   if(!attached(keep))left.joint=right.joint;
+  if(right.positionLocked){
+    // The surviving id can differ from the fixed joint; retain its exact coordinates and lock.
+    Object.assign(left,{x:right.x,y:right.y,z:right.z,positionLocked:true});
+  }
   const swap=(id:string)=>id===remove?keep:id;
   const combined:SpatialModel={...m,nodes:m.nodes.filter(n=>n.id!==remove),
     members:m.members.map(member=>({...member,a:swap(member.a),b:swap(member.b)}))};
@@ -474,6 +513,8 @@ function checkedRule(model:SpatialModel,rule:SpatialRule):SpatialModel {
   if(!dim&&without.rules!.some(other=>active(other)&&key===relationKey(other)))throw Error('The selection already has this constraint.');
   if(rule.kind==='connect'){
     const [a,b]=rule.points;
+    if(spatialPositionLocked(model,a)&&spatialPositionLocked(model,b))
+      throw Error('These joints have different locked positions. Unlock one joint before connecting them.');
     if(model.members.some(member=>[member.a,member.b].includes(a)&&[member.a,member.b].includes(b)))
       throw Error('Joining these endpoints would collapse their member.');
   }
@@ -535,24 +576,42 @@ export function removeSpatialRule(model:SpatialModel,id:string):SpatialModel {
 export function moveConstrainedSpatialNode(model:SpatialModel,id:string,point:Vec3):SpatialModel {
   const current=model.nodes.find(n=>n.id===id);
   if(!current)throw Error('Select an existing joint.');
-  if(axes.some(axis=>!Number.isFinite(point[axis])||Math.abs(point[axis])>=positionLimit))throw Error('Enter finite X, Y and Z coordinates.');
-  const next:SpatialModel={...model,nodes:model.nodes.map(n=>({...n}))},target=next.nodes.find(n=>n.id===id)!;
-  Object.assign(target,{x:point.x,y:point.y,z:point.z});
-  const related=connectedEquations(equations(next),[id]);
+  return moveSpatialNodes(model,new Map([[id,point]]),minus(point,current));
+}
+
+export function translateSpatialMember(model:SpatialModel,id:string,delta:Vec3):SpatialModel {
+  const member=model.members.find(m=>m.id===id);
+  if(!member)throw Error('Select an existing member.');
+  const targets=new Map([member.a,member.b].map(key=>[key,plus(model.nodes.find(n=>n.id===key)!,delta)]));
+  return moveSpatialNodes(model,targets,delta);
+}
+
+function moveSpatialNodes(model:SpatialModel,targets:Map<string,Vec3>,delta:Vec3):SpatialModel {
+  for(const point of targets.values()){
+    if(axes.some(axis=>!Number.isFinite(point[axis])||Math.abs(point[axis])>=positionLimit))throw Error('Enter finite X, Y and Z coordinates.');
+  }
+  if(axes.every(axis=>delta[axis]===0))return model;
+  const ids=[...targets.keys()];
+  if(model.nodes.some(n=>n.positionLocked&&targets.has(n.id)))throw Error('Unlock the joint position before moving it.');
+  const next:SpatialModel={...model,nodes:model.nodes.map(n=>{
+    const point=targets.get(n.id);
+    return point?{...n,x:point.x,y:point.y,z:point.z}:{...n};
+  })};
+  const related=connectedEquations(equations(next),ids);
   const pts=positions(next);
   const errors=()=>related.rows.some(eq=>evaluate(pts,eq).some(value=>Math.abs(value)>solveTolerance));
   if(errors()){
-    const movable=related.ids.filter(key=>key!==id);
+    const movable=related.ids.filter(key=>!targets.has(key));
     // A uniform displacement is exact for a floating rigid assembly. An active
     // origin reference requires projecting the move onto the sketch equations.
-    if(!related.rows.some(eq=>eq.points.includes(SPATIAL_ORIGIN)) && related.rows.length>1){
-      const delta=minus(point,current);
+    const anchored=related.rows.some(eq=>eq.points.includes(SPATIAL_ORIGIN))||next.nodes.some(n=>n.positionLocked&&related.ids.includes(n.id));
+    if(!anchored && related.rows.length>1){
       for(const key of movable){
         const n=next.nodes.find(node=>node.id===key)!;
         Object.assign(n,plus(n,delta));
       }
     }
-    if(!solve(next,[id],movable,[id]))throw Error('That position conflicts with an active 3D dimension or constraint.');
+    if(!solve(next,ids,movable,ids))throw Error('That position conflicts with an active 3D dimension or constraint.');
   }
   return verified(next);
 }

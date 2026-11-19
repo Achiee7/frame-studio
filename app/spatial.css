@@ -98,6 +98,16 @@
 .sp-coordinates small {display:block;color:#a33b2d;font-size:11px;margin-top:5px}
 .sp-action {display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:32px;margin-top:8px;border:1px solid #20654b;border-radius:5px;color:white;background:#286c52;font-size:11px}
 .sp-action:hover {background:#20593f}
+.sp-coordinate-actions {display:flex;gap:5px}
+.sp-coordinate-actions .sp-lock {background:white;color:#245c46}
+.sp-coordinate-actions .sp-lock:hover {background:#e5f1ea}
+.sp-xyz input[readonly] {background:#edf2ee;color:#46594e}
+.sp-freedom {white-space:nowrap;color:#273e34}
+.sp-sketch-legend {position:absolute;bottom:8px;left:100px;display:flex;flex-wrap:wrap;gap:3px 12px;max-width:calc(100% - 110px);pointer-events:none;font-size:10px;color:#405348;background:#f7faf7eb}
+.sp-sketch-legend span {display:inline-flex;align-items:center;gap:4px}
+.sp-sketch-legend i {display:inline-block;width:13px;height:3px}
+.sp-canvas:has(.sp-canvas-readout) .sp-sketch-legend {bottom:45px}
+@media(max-width:650px){.sp-sketch-legend {left:65px;max-width:calc(100% - 70px)}}
 .sp-finish {min-height:30px;margin-top:5px;width:100%;font-size:11px}
 .sp-finish kbd {font-size:9px;color:var(--sp-muted)}
 .sp-length {display:flex;justify-content:space-between;gap:6px;margin:14px 0;color:var(--sp-muted);font-size:12px}

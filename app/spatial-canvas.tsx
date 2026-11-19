@@ -1,11 +1,12 @@
 import {memo,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {PointerEvent as ReactPointerEvent,ReactNode} from 'react';
 import {Box,Maximize,ZoomIn,ZoomOut} from 'lucide-react';
+import type {spatialSketchMobility} from './spatial-mobility';
 import type {SpatialMember,SpatialNode,Vec3} from './spatial-model';
 import {SupportGlyph} from './support-symbol';
 import {useUnits} from './unit-context';
 import {lengthUnits,settingNumber} from './units';
-import {directions,fitCamera,initialCamera,nearbySpatialCrossing,panCamera,planeAxes,project3D,workplaneGrid,workplanePoint,zoomCamera} from './spatial-projection';
+import {directions,fitCamera,geometryDragDelta,geometryDragPlane,initialCamera,nearbySpatialCrossing,panCamera,planeAxes,project3D,workplaneGrid,workplanePoint,zoomCamera} from './spatial-projection';
 import {maxGridIntervals,visibleSegment,wheelZoomFactor,zoomButtonFactor} from './drafting-grid';
 import type {CanvasSize,ScreenPoint,SpatialCamera,SpatialPlane,ViewName} from './spatial-projection';
 import './spatial-canvas.css';
@@ -13,7 +14,11 @@ import './spatial-canvas.css';
 export type {SpatialPlane} from './spatial-projection';
 export type SpatialTool = 'select'|'beam'|'strut'|'joint'|'orbit'|'pan'|'dimension'|'constraint';
 export type SpatialSelection = {type:'node'|'member';id:string}|null;
+export type SpatialDrag = (selection:NonNullable<SpatialSelection>,delta:Vec3,phase:'preview'|'commit'|'cancel')=>void;
 export type SpatialCanvasProps = {
+  onGeometryDrag?:SpatialDrag;
+  mobility?:ReturnType<typeof spatialSketchMobility>;
+  rejected?:NonNullable<SpatialSelection>[];
   nodes:SpatialNode[];members:SpatialMember[];tool:SpatialTool;plane:SpatialPlane;offset:number;snap:number|'auto';
   start?:Vec3|null;selection?:SpatialSelection;showGrid?:boolean;showNames?:boolean;
   onPoint:(point:Vec3,nodeId?:string)=>void;
@@ -25,7 +30,11 @@ export type SpatialCanvasProps = {
 };
 
 type Hit = {type:'node'|'member'|'intersection'|'plane';id:string;point:Vec3;distance:number;depth:number};
-type Gesture = {id:number;origin:ScreenPoint;last:ScreenPoint;mode:'pan'|'orbit'|'pick';moved:boolean;shortcut:boolean};
+type Gesture = {id:number;origin:ScreenPoint;last:ScreenPoint;mode:'pan'|'orbit'|'pick';moved:boolean;shortcut:boolean;
+  geometry?:{pick:NonNullable<SpatialSelection>;update:SpatialDrag;plane:SpatialPlane;step:number;camera:SpatialCamera;size:CanvasSize};
+};
+const stateColors={free:'#326dcc',fixed:'#20262c',conflict:'#cc3f4c'};
+const stateLabels={free:'Underconstrained',fixed:'Fully constrained',conflict:'Constraint conflict'};
 const axisColor={x:'#b56d53',y:'#58865a',z:'#5987b0'};
 const axes=['x','y','z'] as const;
 const centerOf=(s:CanvasSize)=>({x:s.width/2,y:s.height/2});
@@ -64,7 +73,7 @@ function ViewAxes({camera}:{camera:SpatialCamera}){
   </svg>;
 }
 
-export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,selection,showGrid=true,showNames=true,onPoint,onSelect,onSketchPick,highlights=[],renderOverlay,onMemberPoint}:SpatialCanvasProps) {
+export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,selection,showGrid=true,showNames=true,onPoint,onSelect,onSketchPick,highlights=[],renderOverlay,onMemberPoint,onGeometryDrag,mobility,rejected=[]}:SpatialCanvasProps) {
   const svgRef=useRef<SVGSVGElement>(null),gesture=useRef<Gesture|null>(null),didFit=useRef(false);
   const [size,setSize]=useState<CanvasSize>({width:800,height:600});
   const [camera,setCamera]=useState<SpatialCamera>(initialCamera);
@@ -102,6 +111,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     const el=svgRef.current;if(!el)return;
     function wheel(e:WheelEvent){
       e.preventDefault();
+      if(gesture.current?.geometry)return;
       const r=el!.getBoundingClientRect();
       setPicker(null);
       setCamera(c=>zoomCamera(c,{width:r.width,height:r.height},{x:e.clientX-r.left,y:e.clientY-r.top},1/wheelZoomFactor(e.deltaY,e.deltaMode,r.height)));
@@ -194,7 +204,17 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     setPicker(null);e.currentTarget.focus({preventScroll:true});e.currentTarget.setPointerCapture(e.pointerId);
     const shortcut=!!onSketchPick&&e.button===0&&(e.ctrlKey||e.metaKey);
     const mode=shortcut?'pick':e.button===1||e.shiftKey||tool==='pan'?'pan':e.button===2||e.altKey||tool==='orbit'?'orbit':'pick';
-    gesture.current={id:e.pointerId,origin:p,last:p,mode,moved:false,shortcut};
+    const g:Gesture={id:e.pointerId,origin:p,last:p,mode,moved:false,shortcut};
+    if(mode==='pick'&&tool==='select'&&!shortcut&&onGeometryDrag){
+      const hits=hitsAt(p);
+      const hit=hits.length===1?hits[0]:hits.find(h=>selection?.type===h.type&&selection.id===h.id);
+      if(hit&&(hit.type==='node'||hit.type==='member')){
+        const dragPlane=geometryDragPlane(camera,plane);
+        const step=snap==='auto'&&dragPlane!==plane?workplaneGrid(camera,size,dragPlane,hit.point[planeAxes[dragPlane][2]],lengthUnits[unit])?.step??0:snapStep;
+        g.geometry={pick:{type:hit.type,id:hit.id},update:onGeometryDrag,plane:dragPlane,step,camera,size};
+      }
+    }
+    gesture.current=g;
     setPointer(p);
   }
   function move(e:ReactPointerEvent<SVGSVGElement>){
@@ -202,14 +222,27 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     if(!g||g.id!==e.pointerId)return;
     if(!g.moved&&Math.hypot(p.x-g.origin.x,p.y-g.origin.y)<4)return;
     g.moved=true;const dx=p.x-g.last.x,dy=p.y-g.last.y;g.last=p;setDragging(true);
-    if(g.mode==='pan')setCamera(c=>panCamera(c,size,dx,dy));
+    if(g.geometry)updateGeometry(g,p,'preview');
+    else if(g.mode==='pan')setCamera(c=>panCamera(c,size,dx,dy));
     else if(g.mode==='orbit'||(g.mode==='pick'&&tool==='select'&&!g.shortcut))setCamera(c=>({...c,
       yaw:c.yaw-dx*.008,pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,c.pitch+dy*.008))}));
+  }
+  function updateGeometry(g:Gesture,p:ScreenPoint,phase:'preview'|'commit'|'cancel'){
+    const drag=g.geometry!;
+    drag.update(drag.pick,geometryDragDelta(g.origin,p,drag.camera,drag.size,drag.plane,drag.step),phase);
+  }
+  function cancel(){
+    const g=gesture.current;
+    gesture.current=null;
+    if(g?.geometry&&g.moved)updateGeometry(g,g.last,'cancel');
+    if(g&&svgRef.current?.hasPointerCapture(g.id))svgRef.current.releasePointerCapture(g.id);
+    setDragging(false);setPointer(null);
   }
   function end(e:ReactPointerEvent<SVGSVGElement>){
     const g=gesture.current;if(!g||g.id!==e.pointerId)return;
     gesture.current=null;setDragging(false);
     if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);
+    if(g.moved&&g.geometry)updateGeometry(g,local(e),'commit');
     if(g.moved||g.mode!=='pick')return;
     const p=local(e),hits=hitsAt(p,g.shortcut);
     if(hits.length>1){setPicker({screen:p,hits,shortcut:g.shortcut});return;}
@@ -220,21 +253,23 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
   function zoom(factor:number){setPicker(null);setCamera(c=>zoomCamera(c,size,centerOf(size),factor));}
 
   return <div className="sp-canvas">
-    <svg ref={svgRef} data-sketch-surface="3D" className={'sp-canvas-drawing sp-canvas-tool-'+tool+(dragging?' is-dragging':'')} tabIndex={0}
+    <svg ref={svgRef} data-sketch-surface="3D" style={{cursor:!dragging&&onGeometryDrag&&tool==='select'&&target&&!modified?'grab':undefined}} className={'sp-canvas-drawing sp-canvas-tool-'+tool+(dragging?' is-dragging':'')} tabIndex={0}
       role="application" aria-label="Interactive 3D frame drawing" viewBox={`0 0 ${size.width} ${size.height}`}
       onPointerDown={begin} onPointerMove={move} onPointerUp={end}
-      onPointerCancel={()=>{gesture.current=null;setDragging(false);setPointer(null);}}
+      onPointerCancel={cancel} onLostPointerCapture={()=>{if(gesture.current)cancel();}}
       onPointerLeave={()=>{if(!gesture.current)setPointer(null);}} onContextMenu={e=>e.preventDefault()}
-      onKeyDown={e=>{if(e.key==='Escape')setPicker(null);if(e.key.toLowerCase()==='f'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fit();}}}>
+      onKeyDown={e=>{if(e.key==='Escape'){setPicker(null);if(gesture.current){e.preventDefault();cancel();}}if(e.key.toLowerCase()==='f'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fit();}}}>
       {showGrid&&grid&&<PlaneGrid camera={camera} size={size} plane={plane} offset={offset} grid={grid}/>}
       {segments.map(({member,a,b})=>{
         const line=visibleSegment(a.screen,b.screen,size.width,size.height);
         if(!line)return null;
         const active=selection?.type==='member'&&selection.id===member.id||highlights.some(p=>p.type==='member'&&p.id===member.id);
         const highlighted=hover.some(h=>h.type==='member'&&h.id===member.id);
-        const color=active?'#b76520':highlighted?'#16745d':member.kind==='strut'?'#526c5e':'#284c41';
-        return <g key={member.id} data-member={member.id} aria-label={member.id+' '+member.kind}>
-          {(active||highlighted)&&<line {...line} stroke={color} opacity=".18" strokeWidth="8" strokeLinecap="round"/>}
+        const state=rejected.some(p=>p.type==='member'&&p.id===member.id)?'conflict':mobility?.members.get(member.id);
+        const color=state?stateColors[state]:active?'#b76520':highlighted?'#16745d':member.kind==='strut'?'#526c5e':'#284c41';
+        return <g key={member.id} data-member={member.id} aria-label={member.id+' '+member.kind+(state?' · '+stateLabels[state]:'')}>
+          {state&&<title>{member.id} · {stateLabels[state]}</title>}
+          {(active||highlighted)&&<line {...line} stroke={active?'#b76520':'#16745d'} opacity=".32" strokeWidth="8" strokeLinecap="round"/>}
           <line {...line} stroke={color} strokeWidth={2.7} strokeLinecap="round" strokeDasharray={member.kind==='strut'?'8 4':undefined}/>
           {showNames&&<text className="sp-member-label" x={(a.screen.x+b.screen.x)/2} y={(a.screen.y+b.screen.y)/2-7} textAnchor="middle">{member.id}</text>}
         </g>;
@@ -246,11 +281,17 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       {projected.map(({node,screen})=>{
         const active=selection?.type==='node'&&selection.id===node.id||highlights.some(p=>p.type==='node'&&p.id===node.id);
         const hot=hover.some(h=>h.type==='node'&&h.id===node.id);
-        return <g key={node.id} transform={`translate(${screen.x} ${screen.y})`} data-node={node.id} aria-label={node.id+' '+node.joint+' joint'}>
+        const state=rejected.some(p=>p.type==='node'&&p.id===node.id)?'conflict':mobility?.nodes.get(node.id);
+        const ink=state?stateColors[state]:'#295948';
+        return <g key={node.id} transform={`translate(${screen.x} ${screen.y})`} data-node={node.id} aria-label={node.id+' '+node.joint+' joint'+(state?' · '+stateLabels[state]:'')}>
+          {state&&<title>{node.id} · {stateLabels[state]}{node.positionLocked?' · Position locked':''}</title>}
+          {mobility&&node.positionLocked&&<g transform="translate(6 5)" stroke="#20262c" fill="#f7faf7" pointerEvents="none">
+            <path d="M2 4V2a2 2 0 0 1 4 0v2" fill="none"/><rect x="1" y="4" width="6" height="5" rx="1"/>
+          </g>}
           {node.support!=='free'&&<g transform="scale(.72)" color="#647b6e"><SupportGlyph type={node.support}/></g>}
           {(active||hot)&&<circle r="9" fill={active?'#f3d5b3':'#bce3cf'} stroke={active?'#b76520':'#3b8469'} strokeWidth="1"/>}
-          <circle r={node.joint==='rigid'?3.5:5} fill={node.joint==='rigid'?'#295948':'#fff'} stroke="#295948" strokeWidth="1.7"/>
-          {node.joint==='pin'&&<circle r="1.6" fill="#295948"/>}
+          <circle r={node.joint==='rigid'?3.5:5} fill={node.joint==='rigid'?ink:'#fff'} stroke={ink} strokeWidth="1.7"/>
+          {node.joint==='pin'&&<circle r="1.6" fill={ink}/>}
           {showNames&&<text className="sp-node-label" x="8" y="-7">{node.id}</text>}
         </g>;
       })}
@@ -279,6 +320,9 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       <button type="button" title="Fit model (F)" aria-label="Fit 3D model" onClick={fit}><Maximize size={15}/></button>
     </div>
     <ViewAxes camera={camera}/>
+    {mobility&&nodes.length>0&&<div className="sp-sketch-legend" aria-label="Sketch constraint colours">
+      {(['free','fixed','conflict'] as const).map(state=><span key={state}><i style={{background:stateColors[state]}}/>{stateLabels[state]}</span>)}
+    </div>}
     {drawing&&planeEdgeOn&&<button className="sp-canvas-plane-tip" onClick={()=>align(({XY:'Top',XZ:'Front',YZ:'Right'} as const)[plane])}>
       View {plane} face-on to place points
     </button>}
