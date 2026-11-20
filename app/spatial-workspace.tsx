@@ -4,12 +4,14 @@ import {Box, Check, ChevronRight, CircleDot, LockKeyhole, LockKeyholeOpen, MoveU
 import {useUnits} from './unit-context';
 import {inputNumber, lengthUnits, parseNumber, settingNumber} from './units';
 import NumberInput from './number-input';
-import {supportTypes} from './support-symbol';
+import {SupportGlyph,supportTypes} from './support-symbol';
+import SpatialConnectionReview from './spatial-connection-review';
+import {auditSpatialConnections} from './spatial-connections';
 import {SpatialCanvas} from './spatial-canvas';
 import {spatialSketchMobility} from './spatial-mobility';
 import {moveConstrainedSpatialNode,translateSpatialMember,setSpatialPositionLock,spatialPositionLocked} from './spatial-sketch';
 import type {SpatialDrag, SpatialPlane, SpatialSelection, SpatialTool} from './spatial-canvas';
-import {addSpatialMember, ensureSpatialNode, insertSpatialJoint, placeSpatialJoint, removeSpatialMember, removeSpatialNode, updateSpatialMember, updateSpatialNode} from './spatial-model';
+import {addSpatialMember, ensureSpatialNode, insertSpatialJoint, placeSpatialJoint, placeSpatialSupport, removeSpatialMember, removeSpatialNode, updateSpatialMember, updateSpatialNode} from './spatial-model';
 import type {SpatialModel, Vec3} from './spatial-model';
 import type {Joint, Support} from './model';
 import {useSpatialSketch} from './use-spatial-sketch';
@@ -65,7 +67,7 @@ function Coordinates({initial, action, onApply, onLock, onUnlock}:{
   </form>;
 }
 
-export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; onChange:(next:SpatialModel)=>void}) {
+export default function SpatialWorkspace({model, onChange, reviewOnOpen=false}:{model:SpatialModel; onChange:(next:SpatialModel)=>void;reviewOnOpen?:boolean}) {
   const units = useUnits(), factor = lengthUnits[units.length];
   const [tool, setTool] = useState<SpatialTool>(() => model.nodes.length ? 'select' : 'beam');
   const [selection, setSelection] = useState<SpatialSelection>(null);
@@ -85,7 +87,10 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   const [relative, setRelative] = useState(false);
   const [error, setError] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
   const [target,setTarget]=useState<TargetAction|null>(null),[request,setRequest]=useState<SpatialLoadRequest|null>(null);
-  const supportInput=useRef<HTMLSelectElement>(null);
+  const [supportKind,setSupportKind]=useState<Support>('pinned');
+  const [review,setReview]=useState<{focusId?:string}|null>(reviewOnOpen?{}:null);
+  const [showConnections,setShowConnections]=useState(true);
+  const audit=useMemo(()=>auditSpatialConnections(model),[model]);
   const sections=useSpatialSections(model,selection,onChange);
   const sketch=useSpatialSketch(model,onChange);
   const sketchTool=tool==='constraint'||tool==='dimension';
@@ -122,15 +127,24 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
     pickTool(dimension?'dimension':'constraint',true);
     sketch.startAction(action,selection,commandPosition());
   }
+  function applySupport(point:Vec3,memberId?:string){
+    try {
+      const placed=placeSpatialSupport(model,supportKind,point,memberId);
+      if(placed.model!==model)onChange(placed.model);
+      setTarget(null);setSelection({type:'node',id:placed.node.id});setError('');setPane(true);
+    } catch(err){setError((err as Error).message);}
+  }
   function applyTarget(action:TargetAction,next:NonNullable<SpatialSelection>,point?:Vec3){
-    if(action==='support'&&next.type!=='node'||action==='distributed'&&next.type!=='member'){
-      setError(action==='support'?'Choose a joint for the support.':'Choose a member for a distributed load.');return;
-    }
-    setSelection(next);setPane(true);setError('');setTarget(null);
     if(action==='support'){
-      requestAnimationFrame(()=>{supportInput.current?.focus();supportInput.current?.scrollIntoView({block:'nearest'});});
+      if(next.type==='node'){const joint=nodeById.get(next.id);if(joint)applySupport(joint);}
+      else if(point)applySupport(point,next.id);
+      else setError('Click the position on the member in the drawing.');
       return;
     }
+    if(action==='distributed'&&next.type!=='member'){
+      setError('Choose a member for a distributed load.');return;
+    }
+    setSelection(next);setPane(true);setError('');setTarget(null);
     let t:number|undefined;
     const b=point&&next.type==='member'?model.members.find(m=>m.id===next.id):undefined;
     if(b&&point){
@@ -142,7 +156,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   }
   function chooseTarget(action:TargetAction){
     pickTool('select');setTarget(action);setPane(true);
-    if(selection&&(action!=='support'||selection.type==='node')&&(action!=='distributed'||selection.type==='member'))applyTarget(action,selection);
+    if(selection&&action!=='support'&&(action!=='distributed'||selection.type==='member'))applyTarget(action,selection);
   }
   function select(next:SpatialSelection,point?:Vec3) {
     if(sections.bulk){if(next?.type==='member')sections.pick(next.id);return;}
@@ -230,6 +244,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   }
   useEffect(() => {
     const handleKey = (event:KeyboardEvent) => {
+      if(review)return;
       const target = event.target as HTMLElement|null;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || document.querySelector('[role="dialog"], .main-menu')) return;
       if (target?.closest('input,select,textarea,[contenteditable=true]')) return;
@@ -246,7 +261,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   const draftKey = [tool, plane, offsets[plane], start?.x, start?.y, start?.z, relative, units.length].join('/');
   const locked=!!node&&spatialPositionLocked(model,node.id);
   const selectionKey = node && [node.id, node.x, node.y, node.z, locked, units.length].join('/');
-  const hint = target==='support'?'Choose a joint to set its support.':target==='distributed'?'Choose a member for the uniform load.':
+  const hint = target==='support'?'Pick a joint, a position on a member, or a point on the workplane.':target==='distributed'?'Choose a member for the uniform load.':
     target?'Choose a joint or click a position on a member.':drawing ? (start ? 'Pick the next joint. Enter finishes the chain.' : 'Pick the first joint or enter its coordinates.')
     : tool === 'joint' ? 'Click a member to split it, or place a joint on the workplane.'
     : tool === 'pan' ? 'Drag to pan.' : tool === 'orbit' ? 'Drag to orbit the frame.'
@@ -257,6 +272,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
   return <section className="sp-workspace" aria-label="3D frame modelling">
     <div data-sketch-surface="ribbon"><SpatialModelRibbon tool={tool} target={target} activeAction={sketch.activeAction}
       onTool={pickTool} onTarget={chooseTarget} onAction={startAction} onSections={openSections}
+      onConnections={()=>{pickTool('select');setReview({});}}
       pane={pane} onPane={()=>setPane(!pane)} layers={layers.open} onLayers={layers.toggle}/></div>
     {sections.selectionBar}
     <div className="sp-body">
@@ -274,7 +290,7 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
               onUnlock={locked?()=>apply(()=>setSpatialPositionLock(model,node.id,false)):undefined}/>
             <label className="sp-field">Joint type<select value={node.joint} onChange={e => apply(() => updateSpatialNode(model, node.id, {joint:e.target.value as Joint}))}>
               {Object.entries(jointNames).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
-            <label className="sp-field">Support<select ref={supportInput} value={node.support} onChange={e => apply(() => updateSpatialNode(model, node.id, {support:e.target.value as Support}))}>
+            <label className="sp-field">Support<select value={node.support} onChange={e => apply(() => updateSpatialNode(model, node.id, {support:e.target.value as Support}))}>
               {supportTypes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             {attached.length > 0 && <><h3>Connected members</h3>{attached.map(item => <button key={item.id} className="sp-row" onClick={() => select({type:'member', id:item.id})}>
               <MoveUpRight size={13}/><b>{item.id}</b><span>{item.kind}</span><ChevronRight size={13}/></button>)}</>}
@@ -298,6 +314,10 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
           <div className="sp-heading"><h2>{sketchTool?<Ruler/>:<Box/>}{target?({force:'Point force',moment:'Moment',distributed:'Distributed load',support:'Support'})[target]:
             sketchTool?(tool==='dimension'?'Dimension':'Constraints'):placing ? (tool === 'joint' ? 'Place joint' : tool === 'beam' ? 'Draw beam' : 'Draw strut') : 'Workplane'}</h2></div>
           <p className="sp-hint">{hint}</p>
+          {target==='support'&&<div className="sp-support-types" role="group" aria-label="Support type">
+            {supportTypes.filter(s=>s.id!=='free').map(s=><button type="button" key={s.id} aria-pressed={supportKind===s.id}
+              onClick={()=>setSupportKind(s.id)}><svg viewBox="-25 -5 50 50" width="31" height="30" aria-hidden="true"><SupportGlyph type={s.id}/></svg>{s.name}</button>)}
+          </div>}
           {!sketchTool&&!target&&<><span className="sp-field-label">Drawing plane</span>
           <div className="sp-planes" role="group" aria-label="Drawing plane">
             {(['XY','XZ','YZ'] as const).map(p => <button key={p} aria-pressed={plane === p} onClick={() => setPlane(p)}>{p}</button>)}
@@ -324,19 +344,30 @@ export default function SpatialWorkspace({model, onChange}:{model:SpatialModel; 
       <div className="sp-viewport">
         <SpatialCanvas mobility={mobility} rejected={error&&rejectedPick?[rejectedPick]:sketch.rejected} nodes={visible.nodes} members={visible.members} onGeometryDrag={sections.bulk||target?undefined:dragGeometry} tool={sections.bulk?'select':tool} plane={plane} offset={offsets[plane]}
           snap={snap ? spacing??'auto' : 0} start={start} selection={selection} onPoint={place} onSelect={select}
-          onMemberPoint={placeOnMember} showGrid={showGrid} showNames={showNames}
+          supportPicking={target==='support'?supportKind:undefined} onSupportPoint={applySupport}
+          sketchPrompt={sketch.pickPrompt} onMemberPoint={placeOnMember} showGrid={showGrid} showNames={showNames}
           onSketchPick={sections.bulk||target?undefined:pickGeometry} highlights={sections.bulk?sections.chosen.map(id=>({type:'member',id})):sketch.picks} renderOverlay={project=><>
+            {showConnections&&!preview&&audit.candidates.map(c=>{
+              const p=project(c.point),interactive=tool==='select'&&!target&&!sections.bulk;
+              return <circle key={c.id} cx={p.x} cy={p.y} r="9" fill="none" stroke="#b67724" strokeWidth="2"
+                strokeDasharray="4 3" pointerEvents={interactive?'stroke':'none'} style={{cursor:interactive?'pointer':undefined}}
+                onPointerDown={e=>{if(interactive)e.stopPropagation();}}
+                onClick={()=>{if(interactive)setReview({focusId:c.id});}}>
+                <title>{'Review connection · '+[...c.nodes,...c.members].join(' / ')}</title></circle>;
+            })}
             {showLoads&&<SpatialLoadOverlay model={visible} project={project}/>}
             <SpatialRuleLayer model={visible} project={project} dimensions={showDimensions} constraints={showConstraints} onOpen={sketch.inspect} onMove={sketch.moveLabel}/>
           </>}/>
       </div>
     </div>
+    {review&&<SpatialConnectionReview model={model} audit={audit} focusId={review.focusId} onChange={onChange} onClose={()=>setReview(null)}
+      onInspect={p=>{setReview(null);pickTool('select');select(p);}}/>}
     {sketch.menu}
     {layers.menu([{name:'Workplane grid',checked:showGrid,change:setShowGrid},{name:'Dimensions',checked:showDimensions,change:setShowDimensions},
       {name:'Constraints',checked:showConstraints,change:setShowConstraints},{name:'Loads',checked:showLoads,change:setShowLoads},
-      {name:'Joint and member names',checked:showNames,change:setShowNames}])}
+      {name:'Connection markers',checked:showConnections,change:setShowConnections},{name:'Joint and member names',checked:showNames,change:setShowNames}])}
     {sections.dialog}
-    <footer className="sp-status"><span>{model.nodes.length} {model.nodes.length === 1 ? 'joint' : 'joints'} · {model.members.length} {model.members.length === 1 ? 'member' : 'members'}</span><span role="status">{sketch.feedback || (sketch.picks.length===1?'Pick the second point or member':tool==='select'?'Drag a joint or member to move it · Shift-drag to pan · Ctrl-click for constraints':'Ctrl-click geometry for constraints')}</span>
+    <footer className="sp-status"><span>{model.nodes.length} {model.nodes.length === 1 ? 'joint' : 'joints'} · {model.members.length} {model.members.length === 1 ? 'member' : 'members'}</span><span role="status">{sketch.feedback || (target?hint:sketch.picks.length===1?'Pick the second point or member':tool==='select'?'Drag a joint or member to move it · Shift-drag to pan · Ctrl-click for constraints':'Ctrl-click geometry for constraints')}</span>
       {model.nodes.length>0&&<b className="sp-freedom" title="Remaining independent sketch motions">{[...mobility.nodes.values()].includes('conflict')?'Constraint conflict':mobility.dof===0?'Fully constrained':mobility.dof+' DOF'}</b>}</footer>
   </section>;
 }

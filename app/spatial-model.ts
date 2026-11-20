@@ -11,7 +11,8 @@ export type SpatialNode = Vec3 & {id: string; joint: Joint; support: Support; sp
 export type SpatialMember = {id: string; a: string; b: string; kind: 'beam' | 'strut'; section?:SpatialSection; family?:string};
 export type SpatialModel = {nodes: SpatialNode[]; members: SpatialMember[]; rules?:SpatialRule[]; loads?:SpatialLoad[]};
 
-const tolerance = 1e-6;
+export const spatialJoinTolerance = 1e-6;
+const tolerance = spatialJoinTolerance;
 const maxNodes = 500;
 const maxMembers = 750;
 const jointTypes = new Set<Joint>(['rigid', 'pin', 'hinge']);
@@ -134,7 +135,7 @@ export function removeSpatialNode(model: SpatialModel, id: string): SpatialModel
     ...(model.loads?{loads:model.loads.filter(load=>load.target==='node'?load.targetId!==id:remaining.has(load.targetId))}:{})});
 }
 
-function closestOnSpan(point: Vec3, a: Vec3, b: Vec3): Vec3 {
+export function closestOnSpan(point: Vec3, a: Vec3, b: Vec3): Vec3 {
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
   const t = Math.max(0, Math.min(1, ((point.x-a.x)*dx + (point.y-a.y)*dy + (point.z-a.z)*dz) / (dx*dx + dy*dy + dz*dz)));
   return {x: a.x + t*dx, y: a.y + t*dy, z: a.z + t*dz};
@@ -172,12 +173,29 @@ export function insertSpatialJoint(model: SpatialModel, memberId: string, point:
   return placeSpatialJoint(model, projected);
 }
 
-function splitMembersAtNode(model: SpatialModel, node: SpatialNode): SpatialModel {
+/** Restrain the picked member only. A different member at the same crossing
+ * can be joined explicitly in the connection review. */
+export function placeSpatialSupport(model:SpatialModel,support:Support,point:Vec3,memberId?:string) {
+  if(!validPosition(point))throw Error('Choose a finite support position.');
+  let at=point;
+  if(memberId!==undefined){
+    const member=model.members.find(item=>item.id===memberId);
+    if(!member)throw Error('Choose an existing member.');
+    at=closestOnSpan(point,model.nodes.find(n=>n.id===member.a)!,model.nodes.find(n=>n.id===member.b)!);
+  }
+  const placed=ensureSpatialNode(model,at);
+  const attached=memberId===undefined?placed.model:splitMembersAtNode(placed.model,placed.node,memberId);
+  const next=placed.node.support===support?attached:updateSpatialNode(attached,placed.node.id,{support});
+  return {model:next,node:next.nodes.find(n=>n.id===placed.node.id)!};
+}
+
+function splitMembersAtNode(model: SpatialModel, node: SpatialNode, onlyMember?:string): SpatialModel {
   const nodes = new Map(model.nodes.map(item => [item.id, item]));
   const halves: SpatialMember[] = [];
   const tails=new Map<string,string>();
   let loads=model.loads;
   const first = model.members.map(member => {
+    if (onlyMember!==undefined&&member.id!==onlyMember) return member;
     if (member.a === node.id || member.b === node.id) return member;
     const a = nodes.get(member.a)!, b = nodes.get(member.b)!;
     if (distance(closestOnSpan(node, a, b), node) > tolerance) return member;

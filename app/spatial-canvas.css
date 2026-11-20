@@ -1,7 +1,14 @@
 .sp-canvas { position:relative; width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; background:#f7faf7; }
 .sp-canvas-drawing { display:block; width:100%; height:100%; touch-action:none; user-select:none; outline:none; }
 .sp-canvas-drawing:focus-visible { outline:2px solid #519276; outline-offset:-3px; }
-.sp-canvas-tool-beam,.sp-canvas-tool-strut,.sp-canvas-tool-joint { cursor:crosshair; }
+.sp-canvas-tool-beam,.sp-canvas-tool-strut,.sp-canvas-tool-joint,
+.sp-canvas-tool-dimension,.sp-canvas-tool-constraint,.sp-canvas-drawing.is-placing-support { cursor:crosshair; }
+.sp-canvas {container-type:inline-size}
+.sp-canvas .cad-pick-prompt {max-width:calc(100% - 238px)}
+@container (max-width:510px) {
+  .sp-canvas .cad-pick-prompt {top:49px;max-width:calc(100% - 20px)}
+  .sp-canvas:has(.cad-pick-prompt) .sp-canvas-plane-tip {top:115px}
+}
 .sp-canvas-tool-pan,.sp-canvas-tool-orbit { cursor:grab; }
 .sp-canvas-drawing.is-dragging { cursor:grabbing; }
 .sp-canvas-view,.sp-canvas-picker,.sp-canvas-readout,.sp-canvas-plane-tip {

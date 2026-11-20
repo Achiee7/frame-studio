@@ -3,6 +3,8 @@ import type {PointerEvent as ReactPointerEvent,ReactNode} from 'react';
 import {Box,Maximize,ZoomIn,ZoomOut} from 'lucide-react';
 import type {spatialSketchMobility} from './spatial-mobility';
 import type {SpatialMember,SpatialNode,Vec3} from './spatial-model';
+import type {Support} from './model';
+import {PickPrompt} from './cad-ribbon';
 import {SupportGlyph} from './support-symbol';
 import {useUnits} from './unit-context';
 import {lengthUnits,settingNumber} from './units';
@@ -17,6 +19,9 @@ export type SpatialSelection = {type:'node'|'member';id:string}|null;
 export type SpatialDrag = (selection:NonNullable<SpatialSelection>,delta:Vec3,phase:'preview'|'commit'|'cancel')=>void;
 export type SpatialCanvasProps = {
   onGeometryDrag?:SpatialDrag;
+  sketchPrompt?:(mode:'dimension'|'constraint')=>string|null;
+  supportPicking?:Support;
+  onSupportPoint?:(point:Vec3)=>void;
   mobility?:ReturnType<typeof spatialSketchMobility>;
   rejected?:NonNullable<SpatialSelection>[];
   nodes:SpatialNode[];members:SpatialMember[];tool:SpatialTool;plane:SpatialPlane;offset:number;snap:number|'auto';
@@ -73,7 +78,7 @@ function ViewAxes({camera}:{camera:SpatialCamera}){
   </svg>;
 }
 
-export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,selection,showGrid=true,showNames=true,onPoint,onSelect,onSketchPick,highlights=[],renderOverlay,onMemberPoint,onGeometryDrag,mobility,rejected=[]}:SpatialCanvasProps) {
+export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,selection,showGrid=true,showNames=true,onPoint,onSelect,onSketchPick,highlights=[],renderOverlay,onMemberPoint,onGeometryDrag,mobility,rejected=[],sketchPrompt,supportPicking,onSupportPoint}:SpatialCanvasProps) {
   const svgRef=useRef<SVGSVGElement>(null),gesture=useRef<Gesture|null>(null),didFit=useRef(false);
   const [size,setSize]=useState<CanvasSize>({width:800,height:600});
   const [camera,setCamera]=useState<SpatialCamera>(initialCamera);
@@ -86,6 +91,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
   const number=(v:number)=>settingNumber(v/lengthUnits[unit],units,false);
   const coordinates=(p:Vec3)=>axes.map(axis=>axis.toUpperCase()+' '+number(p[axis])).join('  ·  ')+' '+unit;
   const sketchTool=tool==='constraint'||tool==='dimension';
+  const prompt=sketchTool?sketchPrompt?.(tool):supportPicking?'Pick a joint, a point on a member, or the workplane.':null;
   const [modified,setModified]=useState(false);
   const drawing=tool==='beam'||tool==='strut'||tool==='joint';
 
@@ -119,7 +125,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     el.addEventListener('wheel',wheel,{passive:false});
     return ()=>el.removeEventListener('wheel',wheel);
   },[]);
-  useEffect(()=>{setPicker(null);},[tool,plane,offset,nodes,members]);
+  useEffect(()=>{setPicker(null);},[tool,plane,offset,nodes,members,supportPicking]);
   const projected=nodes.map(node=>({node,screen:project3D(node,camera,size)})).sort((a,b)=>a.screen.depth-b.screen.depth);
   const byId=new Map(projected.map(item=>[item.node.id,item]));
   const segments=members.flatMap(member=>{
@@ -135,10 +141,13 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       const distance=Math.hypot(screen.x-p.x,screen.y-p.y);
       if(distance<=10)hits.push({type:'node',id:node.id,point:node,distance,depth:screen.depth});
     }
-    if(!hits.length&&(tool==='select'||drawing||sketchTool||shortcut)){
+    if((!hits.length||supportPicking)&&(tool==='select'||drawing||sketchTool||shortcut)){
       const nearby:typeof segments=[];
       for(const segment of segments){
         const {member,a,b}=segment;
+        // The end of an attached member and its joint are the same support
+        // target. Other members under this pixel can lie at another depth.
+        if(supportPicking&&hits.some(h=>h.type==='node'&&(h.id===member.a||h.id===member.b)))continue;
         const dx=b.screen.x-a.screen.x,dy=b.screen.y-a.screen.y,l2=dx*dx+dy*dy;
         if(l2<.0001)continue;
         const t=Math.max(0,Math.min(1,((p.x-a.screen.x)*dx+(p.y-a.screen.y)*dy)/l2));
@@ -171,7 +180,8 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     // Looking straight down on two storeys can put a new upper joint and an
     // existing lower joint on the same pixel. Offer both physical locations.
     const normal=planeAxes[plane][2];
-    if(drawing&&!shortcut&&planePoint&&near.every(hit=>Math.abs(hit.point[normal]-offset)>1e-6)){
+    const offerPlane=supportPicking?near.length===0:drawing&&near.every(hit=>Math.abs(hit.point[normal]-offset)>1e-6);
+    if(offerPlane&&!shortcut&&planePoint){
       near.push({type:'plane',id:plane+' plane',point:planePoint,distance:0,depth:0});
     }
     return near;
@@ -189,6 +199,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
       onSketchPick(ref,{x:rect.left+screen.x,y:rect.top+screen.y},shortcut);
       return;
     }
+    if(supportPicking&&hit?.type==='plane'){onSupportPoint?.(hit.point);return;}
     if(tool==='select')onSelect(hit&&(hit.type==='node'||hit.type==='member')?{type:hit.type,id:hit.id}:null,hit?.point);
     if(drawing&&hit){
       if(tool==='joint'&&hit.type==='member'&&onMemberPoint)onMemberPoint(hit.id,hit.point);
@@ -253,7 +264,7 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
   function zoom(factor:number){setPicker(null);setCamera(c=>zoomCamera(c,size,centerOf(size),factor));}
 
   return <div className="sp-canvas">
-    <svg ref={svgRef} data-sketch-surface="3D" style={{cursor:!dragging&&onGeometryDrag&&tool==='select'&&target&&!modified?'grab':undefined}} className={'sp-canvas-drawing sp-canvas-tool-'+tool+(dragging?' is-dragging':'')} tabIndex={0}
+    <svg ref={svgRef} data-sketch-surface="3D" style={{cursor:!dragging&&onGeometryDrag&&tool==='select'&&target&&!modified?'grab':undefined}} className={'sp-canvas-drawing sp-canvas-tool-'+tool+(supportPicking?' is-placing-support':'')+(dragging?' is-dragging':'')} tabIndex={0}
       role="application" aria-label="Interactive 3D frame drawing" viewBox={`0 0 ${size.width} ${size.height}`}
       onPointerDown={begin} onPointerMove={move} onPointerUp={end}
       onPointerCancel={cancel} onLostPointerCapture={()=>{if(gesture.current)cancel();}}
@@ -305,10 +316,16 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
         </g>;
       })()}
       {renderOverlay?.(p=>project3D(p,camera,size),size)}
+      {supportPicking&&targetScreen&&<g data-support-preview={target?.type} transform={`translate(${targetScreen.x} ${targetScreen.y})`}
+        color="#13764f" pointerEvents="none" aria-hidden="true">
+        <g transform="scale(.72)" opacity=".85"><SupportGlyph type={supportPicking}/></g>
+        <circle r="4" fill="white" stroke="currentColor" strokeWidth="2"/>
+      </g>}
       {targetScreen&&drawing&&target?.type!=='node'&&<g transform={`translate(${targetScreen.x} ${targetScreen.y})`} stroke="#b9722e" fill="#fff">
         <circle r="3.5"/><path d="M-10 0h5m10 0h5M0 -10v5m0 10v5" fill="none"/>
       </g>}
     </svg>
+    {prompt&&<PickPrompt label={supportPicking?'Support':tool==='dimension'?'Dimension':'Constraint'}>{prompt}</PickPrompt>}
     <div className="sp-canvas-view" aria-label="3D view controls">
       <Box size={15} aria-hidden="true"/>
       <select aria-label="3D view orientation" value={cameraView??''} onChange={e=>align(e.target.value as ViewName)}>
@@ -323,11 +340,11 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
     {mobility&&nodes.length>0&&<div className="sp-sketch-legend" aria-label="Sketch constraint colours">
       {(['free','fixed','conflict'] as const).map(state=><span key={state}><i style={{background:stateColors[state]}}/>{stateLabels[state]}</span>)}
     </div>}
-    {drawing&&planeEdgeOn&&<button className="sp-canvas-plane-tip" onClick={()=>align(({XY:'Top',XZ:'Front',YZ:'Right'} as const)[plane])}>
+    {(drawing||supportPicking)&&planeEdgeOn&&<button className="sp-canvas-plane-tip" onClick={()=>align(({XY:'Top',XZ:'Front',YZ:'Right'} as const)[plane])}>
       View {plane} face-on to place points
     </button>}
     {hover.length>1&&!picker&&<div className="sp-canvas-readout">Multiple locations under the pointer · click to choose</div>}
-    {target&&drawing&&<div className="sp-canvas-readout">
+    {target&&(drawing||supportPicking)&&<div className="sp-canvas-readout">
       {target.type!=='plane'&&<strong>{target.id} · </strong>}{coordinates(target.point)}
       {start&&<span>Length {number(lengthOf(start,target.point))} {unit}</span>}
     </div>}

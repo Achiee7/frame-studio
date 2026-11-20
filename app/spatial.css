@@ -98,6 +98,9 @@
 .sp-coordinates small {display:block;color:#a33b2d;font-size:11px;margin-top:5px}
 .sp-action {display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:32px;margin-top:8px;border:1px solid #20654b;border-radius:5px;color:white;background:#286c52;font-size:11px}
 .sp-action:hover {background:#20593f}
+.sp-support-types {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.sp-support-types button {display:flex;align-items:center;gap:6px;padding:5px;background:white;border:1px solid var(--sp-rule);border-radius:5px;color:#355748;font:inherit}
+.sp-support-types button[aria-pressed=true] {border-color:#286c52;background:#e2efe6;color:#164330}
 .sp-coordinate-actions {display:flex;gap:5px}
 .sp-coordinate-actions .sp-lock {background:white;color:#245c46}
 .sp-coordinate-actions .sp-lock:hover {background:#e5f1ea}

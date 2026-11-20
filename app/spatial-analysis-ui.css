@@ -64,6 +64,7 @@
 .sr-alert strong {font-size:14px}
 .sr-alert p {font-size:12px;margin:3px 0 8px}
 .sr-alert button {padding:5px 8px;min-height:29px;font-size:11px}
+.sr-alert-actions {display:flex;gap:6px;flex-wrap:wrap}
 .sr-alert.sr-empty {color:#42624d;background:#f2f7f2;border-color:#c5d9ca}
 .sr-warnings {background:#fff5e6;color:#785021;padding:6px 14px;font-size:11px}
 .sp-inspector.sp-explorer {display:flex;flex-direction:column;overflow:hidden}

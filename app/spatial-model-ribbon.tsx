@@ -61,10 +61,10 @@ export const drawingTools=[
 export type TargetAction='support'|SpatialLoad['kind'];
 type Props={
   tool:SpatialTool;target:TargetAction|null;activeAction?:SketchAction|null;onTool:(tool:SpatialTool)=>void;
-  onTarget:(target:TargetAction)=>void;onAction:(action:SketchAction,dimension:boolean)=>void;onSections:()=>void;
+  onTarget:(target:TargetAction)=>void;onAction:(action:SketchAction,dimension:boolean)=>void;onSections:()=>void;onConnections:()=>void;
   pane:boolean;onPane:()=>void;layers:boolean;onLayers:()=>void;
 };
-export function SpatialModelRibbon({tool,target,activeAction,onTool,onTarget,onAction,onSections,pane,onPane,layers,onLayers}:Props){
+export function SpatialModelRibbon({tool,target,activeAction,onTool,onTarget,onAction,onSections,onConnections,pane,onPane,layers,onLayers}:Props){
   const button=(id:SpatialTool,small=false)=>{
     const item=drawingTools.find(o=>o.id===id)!;
     return <RibbonTool key={id} label={item.name} icon={item.icon} description={item.description+' ('+item.key+')'}
@@ -79,7 +79,7 @@ export function SpatialModelRibbon({tool,target,activeAction,onTool,onTarget,onA
       {button('orbit',true)}
     </RibbonGroup>
     <RibbonGroup label="Build">{button('beam')}{button('strut')}{button('joint')}
-      <RibbonTool label="Support" description="Select a joint to choose its support." icon={Triangle} onClick={()=>onTarget('support')} active={target==='support'}/>
+      <RibbonTool label="Support" description="Choose a support type, then place it on a joint, a member or the workplane." icon={Triangle} onClick={()=>onTarget('support')} active={target==='support'}/>
       <RibbonTool label="Sections" icon={FolderOpen} description="Browse and assign section profiles." onClick={onSections}/>
     </RibbonGroup>
     <RibbonGroup label="Dimension">{button('dimension')}</RibbonGroup>
@@ -90,5 +90,6 @@ export function SpatialModelRibbon({tool,target,activeAction,onTool,onTarget,onA
       {key:'distributed',label:'Distributed load',icon:ArrowDownToLine,description:'Apply a uniform load across a member.'}] as const).map(item=>
       <RibbonTool key={item.key} label={item.label} icon={item.icon} description={item.description} active={target===item.key} onClick={()=>onTarget(item.key)}/>)}
     </RibbonGroup>
+    <RibbonGroup label="Inspect"><RibbonTool label="Connections" icon={Link2} description="Review gaps, crossings and separate parts of the frame." onClick={onConnections}/></RibbonGroup>
   </CadRibbon>;
 }

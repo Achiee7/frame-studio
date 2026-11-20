@@ -32,6 +32,10 @@ export function CadRibbon({label,children}:{label:string;children:ReactNode}) {
   </section>;
 }
 
+export function PickPrompt({label,children}:{label:string;children:ReactNode}){
+  return <div className="cad-pick-prompt" role="status"><strong>{label}</strong><span>{children}</span></div>;
+}
+
 export function RibbonGroup({label,compact=false,children}:{label:string;compact?:boolean;children:ReactNode}){
   return <div className={'cad-ribbon-group'+(compact?' compact':'')} role="group" aria-label={label}>
     <div className="ribbon-group-items">{children}</div><span className="ribbon-group-label">{label}</span>
