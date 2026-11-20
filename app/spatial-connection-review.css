@@ -1,0 +1,31 @@
+.sc-review {width:min(600px,calc(100vw - 28px));max-height:85dvh;padding:0;overflow:hidden;color:#284739;margin:auto}
+.sc-review::backdrop {background:#1e302b55;backdrop-filter:blur(3px)}
+.sc-review[open] {display:flex;flex-direction:column}
+.sc-review .modal-head {flex:none;padding:17px 22px;margin:0;background:white}
+.sc-review .modal-head h2 {margin:0}
+.sc-content {padding:16px 22px 20px;overflow:auto;min-height:0}
+.sc-content section+section,.sc-existing {border-top:1px solid #dbe5de;margin-top:16px;padding-top:13px}
+.sc-review h3,.sc-existing summary {font-size:14px;font-weight:650;line-height:1.5;margin:0}
+.sc-review h3 small,.sc-existing summary small {margin-left:4px;color:#586d60;font-size:12px;font-weight:500}
+.sc-content section>p,.sc-candidate small {font-size:12px;color:#53685b;line-height:1.5;margin:3px 0}
+.sc-candidate {padding:10px 12px;border:1px solid #d5e1d7;border-radius:6px;margin-top:7px}
+.sc-description,.sc-location,.sc-connect-controls,.sc-joint-picks {display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.sc-description {justify-content:space-between}
+.sc-description strong {font-size:14px;overflow-wrap:anywhere}
+.sc-description span,.sc-location {font-size:11px;color:#566d5d}
+.sc-location {font-variant-numeric:tabular-nums;margin:4px 0 10px}
+.sc-connect-controls {gap:6px}
+.sc-connect-controls select,.sc-joint-picks button,.sc-existing-joint {border:1px solid #c9d9cf;border-radius:5px;background:white;color:#2d503d}
+.sc-connect-controls select {width:auto;min-height:30px;padding:3px 6px;font-size:12px}
+.sc-connect-controls button,.sc-joint-picks button {display:inline-flex;align-items:center;gap:5px;padding:5px 9px;min-height:30px;font-size:12px}
+.sc-connect-controls button:disabled {opacity:.45;cursor:default}
+.sc-candidate small {display:block;margin:6px 0 0}
+.sc-group {border-left:2px solid #b8cabd;margin-top:7px;padding-left:8px}
+.sc-joint-picks {gap:4px;margin-top:5px}
+.sc-existing summary {cursor:pointer}
+.sc-existing-joint {display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px;margin-top:4px;font-size:12px}
+.sc-existing-joint span {flex:1;overflow-wrap:anywhere}
+.sc-no-candidates,.sc-confirmation {display:flex;align-items:center;gap:6px;font-size:12px;color:#266447;margin:0}
+.sc-confirmation,.sc-error {padding:7px 9px;margin:0 0 10px;border-radius:4px;background:#edf6ef}
+.sc-error {background:#fff1e9;color:#913b24;font-size:12px}
+@media(max-width:530px){.sc-review .modal-head,.sc-content {padding:13px}}

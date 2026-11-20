@@ -117,5 +117,24 @@ export function useSpatialSketch(model:SpatialModel,onChange:(m:SpatialModel)=>v
       }}><b>{rule.id}</b> {actionLabel(rule.kind,'3D',rule.refs.length===1)}<span>{isSpatialDimension(rule.kind)?valueText(rule,model,units):''}{rule.driven?' (ref.)':rule.suppressed?' (off)':''}</span></button>)}
     </details>;
   }
-  return {select,startAction,rejected:current?.error?current.picks:[],activeAction:edit?.requested??current?.requested,inspect,moveLabel,related,reset,menu,feedback,picks:current?.picks??[]};
+  function pickPrompt(mode:ActionMode):string|null {
+    if(edit)return null;
+    const picks=current?.picks??[],first=picks[0],action=current?.requested;
+    if(current?.error)return current.error;
+    if(!action){
+      if(menu)return null;
+      if(first)return 'Pick a second joint or a member.';
+      return mode==='dimension'?'Pick two joints for a distance, or a member for its length.':'Pick a member or two objects to choose a constraint.';
+    }
+    const name=actionLabel(action,'3D');
+    if(['parallel','perpendicular','equal','collinear','angle'].includes(action)){
+      return name+' · '+(first?'Pick the second member.':'Pick two members.');
+    }
+    if(['offset','midpoint','pointOnMember'].includes(action)){
+      return name+' · '+(!first?'Pick a joint and a member.':first.type==='node'?'Pick the member.':'Pick the joint.');
+    }
+    if(action==='connect')return !first?'Pick two joints, or a joint and a member.':first.type==='node'?'Pick another joint or the member to connect to.':'Pick the joint to connect.';
+    return name+' · '+(first?'Pick the second joint.':'Pick a member or two joints.');
+  }
+  return {pickPrompt,select,startAction,rejected:current?.error?current.picks:[],activeAction:edit?.requested??current?.requested,inspect,moveLabel,related,reset,menu,feedback,picks:current?.picks??[]};
 }

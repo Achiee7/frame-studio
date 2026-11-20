@@ -1,6 +1,6 @@
 import {useMemo,useRef,useState} from 'react';
 import type {ComponentType} from 'react';
-import {Activity,AlertTriangle,ArrowDownUp,ArrowLeft,ArrowLeftRight,ChartSpline,Check,CircleDot,Eye,GitBranch,Hand,ListTree,MousePointer2,Orbit,RotateCw,Settings2,TrendingUp} from 'lucide-react';
+import {Activity,AlertTriangle,ArrowDownUp,ArrowLeft,ArrowLeftRight,ChartSpline,Check,CircleDot,Eye,GitBranch,Hand,Link2,ListTree,MousePointer2,Orbit,RotateCw,Settings2,TrendingUp} from 'lucide-react';
 import {SpatialCanvas} from './spatial-canvas';
 import type {SpatialSelection} from './spatial-canvas';
 import {useSpatialAnalysis} from './spatial-analysis-hook';
@@ -143,8 +143,8 @@ function StationInspector({member,station,setStation,units}:{member:MemberResult
   </section>;
 }
 
-type ResultsProps={model:SpatialModel;onBack:()=>void;onChange?:(model:SpatialModel)=>void};
-export default function SpatialResults({model,onBack,onChange}:ResultsProps){
+type ResultsProps={model:SpatialModel;onBack:()=>void;onReviewConnections:()=>void;onChange?:(model:SpatialModel)=>void};
+export default function SpatialResults({model,onBack,onReviewConnections,onChange}:ResultsProps){
   const units=useUnits(),[mode,setMode]=useState<Mode>('reactions'),[direction,setDirection]=useState<'y'|'z'>('y');
   const [selection,setSelection]=useState<SpatialSelection>(null),[panel,setPanel]=useState(true);
   const [station,setStation]=useState(0),[localAxes,setLocalAxes]=useState(true);
@@ -249,7 +249,9 @@ export default function SpatialResults({model,onBack,onChange}:ResultsProps){
             {!sections.bulk&&<SpatialRuleLayer model={model} project={project} dimensions={dimensions} constraints={constraints}
               onOpen={sketch.inspect} onMove={sketch.moveLabel}/>}</>}/>
         {(preparation||error)&&<aside className={'sr-alert '+(preparation?'sr-empty':'')} role={preparation?'status':'alert'}>
-          <AlertTriangle size={19}/><div><strong>{preparation?'Prepare the 3D model':'3D analysis needs attention'}</strong><p>{preparation||error}</p><button onClick={onBack}><ArrowLeft size={14}/>Back to 3D-model</button></div></aside>}
+          <AlertTriangle size={19}/><div><strong>{preparation?'Prepare the 3D model':'3D analysis needs attention'}</strong><p>{preparation||error}</p>
+            <div className="sr-alert-actions">{error&&/unstable|equilibrium|attached member|end joints/i.test(error)&&<button onClick={onReviewConnections}><Link2 size={14}/>Review connections</button>}
+              <button onClick={onBack}><ArrowLeft size={14}/>Back to 3D-model</button></div></div></aside>}
         {pending&&<div className="sr-legend" role="status">Calculating 3D results…</div>}
         {result&&<div className="sr-legend" aria-label="3D result legend">
           {mode==='reactions'?<><span><i style={{background:'#345fa1'}}/>Support reactions</span>{loads&&<span><i style={{background:'#ba5f22'}}/>Applied loads</span>}</>:

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {example, validModel} from '../app/model.ts';
-import {addSpatialMember, emptySpatialModel, ensureSpatialNode, insertSpatialJoint, placeSpatialJoint, removeSpatialMember, removeSpatialNode, spatialMemberIntersection, updateSpatialMember, updateSpatialNode, validSpatialModel} from '../app/spatial-model.ts';
+import {addSpatialMember, emptySpatialModel, ensureSpatialNode, insertSpatialJoint, placeSpatialJoint, placeSpatialSupport, removeSpatialMember, removeSpatialNode, spatialMemberIntersection, updateSpatialMember, updateSpatialNode, validSpatialModel} from '../app/spatial-model.ts';
 
 const point = (x, y, z) => ({x, y, z});
 assert.deepEqual(spatialMemberIntersection(point(-1, 0, -1), point(1, 0, 1), point(0, -2, 1), point(0, 2, -1)), point(0, 0, 0));
@@ -26,6 +26,16 @@ assert.throws(() => addSpatialMember(brace.model, point(4, 0, 0), point(4, 0, 0)
 assert.throws(() => updateSpatialNode(brace.model, brace.member.a, point(NaN, 1, 0)), /finite/);
 assert.throws(() => updateSpatialNode(brace.model, brace.member.a, point(1, 0, 0)), /already occupies/);
 
+const supportedCross=placeSpatialSupport(brace.model,'roller',point(0,0,0),xMember.member.id);
+assert.equal(supportedCross.model.members.length,brace.model.members.length+1);
+assert.equal(supportedCross.node.support,'roller');
+assert.equal(supportedCross.node.joint,'rigid');
+assert.equal(supportedCross.model.members.filter(m=>[m.a,m.b].includes(supportedCross.node.id)).length,2);
+assert.equal(brace.model.members.length,4);
+const ground=placeSpatialSupport(supportedCross.model,'pinned',point(0,3,2));
+assert.equal(ground.model.members.length,supportedCross.model.members.length);
+assert.equal(ground.node.z,2);
+assert.equal(placeSpatialSupport(ground.model,'pinned',ground.node).model,ground.model);
 const split = insertSpatialJoint(brace.model, xMember.member.id, point(0, 0, 0));
 assert.deepEqual(split, placeSpatialJoint(brace.model, point(0, 0, 0)));
 assert.equal(split.model.members.length, 6);

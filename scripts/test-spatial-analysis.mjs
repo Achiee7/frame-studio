@@ -1,4 +1,4 @@
-import {insertSpatialJoint,removeSpatialMember,removeSpatialNode,updateSpatialNode,validSpatialModel} from '../app/spatial-model.ts';
+import {insertSpatialJoint,placeSpatialSupport,removeSpatialMember,removeSpatialNode,updateSpatialNode,validSpatialModel} from '../app/spatial-model.ts';
 import {createSpatialRule} from '../app/spatial-sketch.ts';
 import assert from 'node:assert/strict';
 import {solveSpatial} from '../app/spatial-analysis.ts';
@@ -34,6 +34,17 @@ for(const coord of ['x','y','z']){
   const rot=coord==='x'?P*L/(G*J):P*L/(E*(coord==='y'?Iy:Iz));
   nearVec(moment.nodes[1].rotation,component(coord,rot));nearVec(moment.reactions[0].moment,scale(f,-1));
 }
+// A fixed support at 30% divides the original beam into two continuous spans.
+const supportedModel=single();
+supportedModel.nodes[0].support='free';
+supportedModel.loads=[load('node','B','force',v(0,0,-P))];
+const station=.3*L;
+const supported=placeSpatialSupport(supportedModel,'fixed',v(station),'B1');
+const interiorReaction=solveSpatial(supported.model);
+assert.equal(interiorReaction.reactions.length,1);
+nearVec(interiorReaction.reactions[0].force,v(0,0,P));
+nearVec(interiorReaction.reactions[0].moment,v(0,-P*(L-station),0));
+near(interiorReaction.nodes[1].displacement.z,-P*(L-station)**3/(3*E*Iy));
 const torsion=tip('moment',v(P));
 for(const s of torsion.members[0].samples)near(s.T,P);
 const rolled=tip('force',v(0,0,-P),m=>{m.members[0].section={...section,roll:90};});
