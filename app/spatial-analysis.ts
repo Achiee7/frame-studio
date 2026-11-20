@@ -2,6 +2,7 @@ import type {SpatialModel,SpatialNode,Vec3} from './spatial-model.ts';
 import {validSpatialAnalysisInput} from './spatial-analysis-input.ts';
 import {modelRange} from './analysis-validity.ts';
 import {SpatialSystem} from './spatial-analysis-system.ts';
+import {describeSpatialInstability,SpatialInstabilityError} from './spatial-instability.ts';
 import {addMemberLoad,assembleElement,createElement,cross,endState,minus,norm,plus,recover,times,zero} from './spatial-analysis-element.ts';
 import type {Element,SpatialSample} from './spatial-analysis-element.ts';
 
@@ -153,7 +154,8 @@ export function solveSpatial(model:SpatialModel):SpatialResult{
     }
   }
   for(const element of elements.values())assembleElement(system,element);
-  const {U,R,indeterminate}=system.solve();
+  const {U,R,indeterminate}=system.solve((kind,physical)=>
+    new SpatialInstabilityError(describeSpatialInstability(kind,physical,model,system,translations,rotations,elements)));
   if(indeterminate.size)warnings.push('A free spin has no unique joint rotation. Displacements, member forces and reactions are resolved.');
   const nodal=nodes.map(n=>{
     const t=translations.get(n.id)!,groups=rotations.get(n.id)!,r=groups.size===1?[...groups.values()][0]:undefined;

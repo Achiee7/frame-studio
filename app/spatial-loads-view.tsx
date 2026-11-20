@@ -41,7 +41,7 @@ function arrowEnds({project,position,vector,reaction,pixels=40}:ArrowProps){
   const tip=reaction?end:o;
   return {o,direction,tip,tail};
 }
-function ForceArrow(props:ArrowProps){
+export function ForceArrow(props:ArrowProps){
   const {color,text,reaction,labelShift=0}=props;
   const {o,direction,tip,tail}=arrowEnds(props);
   if(magnitude(props.vector)===0)return null;
@@ -55,7 +55,7 @@ function ForceArrow(props:ArrowProps){
     {text&&<text className="sr-svg-value" style={{fill:color}} x={edge.x+side*5} y={edge.y-4+labelShift} textAnchor={side<0?'end':'start'}>{text}</text>}
   </g>;
 }
-function MomentArrow({project,position,vector,text,color,labelShift=0,pixels=20}:ArrowProps){
+export function MomentArrow({project,position,vector,text,color,labelShift=0,pixels=20}:ArrowProps){
   if(magnitude(vector)===0)return null;
   const n=unit(vector),u=unit(cross(Math.abs(n.z)<.85?unitAxes.z:unitAxes.x,n)),v=cross(n,u);
   const scale=pixels/projectionScale(project);
