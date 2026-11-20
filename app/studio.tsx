@@ -14,6 +14,7 @@ import {ValueField} from './load-controls';
 import {lazy,Suspense,useState,useEffect,useRef,useMemo} from 'react';
 import {emptySpatialModel} from './spatial-model';
 import type {SpatialModel} from './spatial-model';
+import type {SpatialEntry} from './spatial-workspace';
 const SpatialWorkspace=lazy(()=>import('./spatial-workspace'));
 const blankSpatial=emptySpatialModel();
 function restoredTab(model?:Model){
@@ -381,9 +382,9 @@ export default function Studio(){
  const unattached=m.nodes.filter(n=>!m.beams.some(b=>b.a===n.id||b.b===n.id));
 
  
- const [reviewSpatial,setReviewSpatial]=useState(false);
- function openSpatial(results=false,review=false){
-  setReviewSpatial(review);
+ const [spatialEntry,setSpatialEntry]=useState<SpatialEntry>();
+ function openSpatial(results=false,entry?:Omit<SpatialEntry,'model'>){
+  setSpatialEntry(entry?{...entry,model:m.spatial??blankSpatial}:undefined);
   const destination=results?'spatialResults':'spatial';
   if(tab===destination)return;
   if(start&&['beam','strut'].includes(tool))finishDrawing();
@@ -399,7 +400,7 @@ export default function Studio(){
  <header className="topbar"><div className="brand"><span className="brandmark">F<span/></span><strong>frame<span>studio</span></strong></div><div className="project-heading"><input aria-label="Project name" value={title} maxLength={100} onChange={e=>{setTitle(e.target.value);setDirty(true);}}/></div><div className="header-actions"><span className="save-state" title={storageError||sync}><i className={dirty?'unsaved':''}/>{dirty?'Unsaved changes':sync}</span><button className="main-menu-button" aria-label="Main menu" aria-expanded={mainMenu} onClick={()=>setMainMenu(!mainMenu)}><Menu size={21}/></button></div>{mainMenu&&<><button className="menu-dismiss" aria-label="Close main menu" onClick={()=>setMainMenu(false)}/><nav className="main-menu" aria-label="Project menu"><button onClick={()=>{setMainMenu(false);listProjects();}}><FolderOpen size={17}/>Projects</button><button onClick={()=>{setMainMenu(false);setModal('about');}}><FileText size={17}/>About &amp; license</button><button onClick={()=>{setMainMenu(false);setModal('settings');}}><Settings2 size={17}/>Settings</button><button onClick={()=>{setMainMenu(false);setModal('help');}}><HelpCircle size={17}/>Help &amp; shortcuts</button></nav></>}</header>
  <div className="subbar"><div className="sub-left"><button className={tab==='model'?'tab active':'tab'} onClick={()=>{setTab('model');setAnalysis(false);setResultsPanel(false);}}>Model</button><button className={tab==='results'?'tab active':'tab'} onClick={openResults} title="Results for the 2D model">2D Results</button><button className={tab==='spatial'?'tab active':'tab'} aria-current={tab==='spatial'?'page':undefined} onClick={()=>openSpatial()}>3D-model</button><button className={tab==='spatialResults'?'tab active':'tab'} aria-current={tab==='spatialResults'?'page':undefined} onClick={()=>openSpatial(true)}>3D Results</button></div><div className="sub-actions"><button onClick={undo} disabled={!history.length} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={16}/></button><button onClick={redo} disabled={!future.length} title="Redo" aria-label="Redo"><Redo2 size={16}/></button><button onClick={()=>save()} title="Save project (Ctrl+S)" aria-label="Save project" className={dirty?'save-dirty':''}><Save size={16}/></button></div></div>
  {spatialOpen?<Suspense fallback={<p role="status">Opening 3D-model…</p>}>
-  {tab==='spatialResults'?<SpatialResults key={projectSession} model={m.spatial??blankSpatial} onBack={()=>openSpatial()} onReviewConnections={()=>openSpatial(false,true)} onChange={changeSpatial}/>:<SpatialWorkspace reviewOnOpen={reviewSpatial} key={projectSession} model={m.spatial??blankSpatial} onChange={changeSpatial}/>}
+  {tab==='spatialResults'?<SpatialResults key={projectSession} model={m.spatial??blankSpatial} onBack={()=>openSpatial()} onReviewConnections={diagnostic=>openSpatial(false,{review:true,diagnostic})} onInspectInstability={pick=>openSpatial(false,{pick})} onChange={changeSpatial}/>:<SpatialWorkspace entry={spatialEntry} key={projectSession} model={m.spatial??blankSpatial} onChange={changeSpatial}/>}
  </Suspense>:<>
  <PlanarRibbon results={tab==='results'} tool={tool} constraint={constraint} diagram={resultView} tree={treeOpen} visible={visibilityOpen}
   onTree={()=>setTreeOpen(!treeOpen)} onVisibility={()=>setVisibilityOpen(!visibilityOpen)} onTool={t=>{choose(t);if(t==='select')setRight(false);}}

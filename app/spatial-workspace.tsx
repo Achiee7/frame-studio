@@ -6,6 +6,7 @@ import {inputNumber, lengthUnits, parseNumber, settingNumber} from './units';
 import NumberInput from './number-input';
 import {SupportGlyph,supportTypes} from './support-symbol';
 import SpatialConnectionReview from './spatial-connection-review';
+import type {SpatialInstability} from './spatial-instability';
 import {auditSpatialConnections} from './spatial-connections';
 import {SpatialCanvas} from './spatial-canvas';
 import {spatialSketchMobility} from './spatial-mobility';
@@ -67,10 +68,11 @@ function Coordinates({initial, action, onApply, onLock, onUnlock}:{
   </form>;
 }
 
-export default function SpatialWorkspace({model, onChange, reviewOnOpen=false}:{model:SpatialModel; onChange:(next:SpatialModel)=>void;reviewOnOpen?:boolean}) {
+export type SpatialEntry={model:SpatialModel;review?:boolean;diagnostic?:SpatialInstability;pick?:NonNullable<SpatialSelection>};
+export default function SpatialWorkspace({model, onChange, entry}:{model:SpatialModel; onChange:(next:SpatialModel)=>void;entry?:SpatialEntry}) {
   const units = useUnits(), factor = lengthUnits[units.length];
   const [tool, setTool] = useState<SpatialTool>(() => model.nodes.length ? 'select' : 'beam');
-  const [selection, setSelection] = useState<SpatialSelection>(null);
+  const [selection, setSelection] = useState<SpatialSelection>(()=>entry?.model===model?entry.pick??null:null);
   const committed=useRef(model);
   committed.current=model;
   const [preview,setPreview]=useState<{base:SpatialModel;next:SpatialModel}|null>(null);
@@ -88,7 +90,7 @@ export default function SpatialWorkspace({model, onChange, reviewOnOpen=false}:{
   const [error, setError] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
   const [target,setTarget]=useState<TargetAction|null>(null),[request,setRequest]=useState<SpatialLoadRequest|null>(null);
   const [supportKind,setSupportKind]=useState<Support>('pinned');
-  const [review,setReview]=useState<{focusId?:string}|null>(reviewOnOpen?{}:null);
+  const [review,setReview]=useState<{focusId?:string}|null>(entry?.model===model&&entry.review?{}:null);
   const [showConnections,setShowConnections]=useState(true);
   const audit=useMemo(()=>auditSpatialConnections(model),[model]);
   const sections=useSpatialSections(model,selection,onChange);
@@ -360,7 +362,7 @@ export default function SpatialWorkspace({model, onChange, reviewOnOpen=false}:{
           </>}/>
       </div>
     </div>
-    {review&&<SpatialConnectionReview model={model} audit={audit} focusId={review.focusId} onChange={onChange} onClose={()=>setReview(null)}
+    {review&&<SpatialConnectionReview model={model} audit={audit} focusId={review.focusId} diagnostic={entry?.model===model?entry.diagnostic:undefined} onChange={onChange} onClose={()=>setReview(null)}
       onInspect={p=>{setReview(null);pickTool('select');select(p);}}/>}
     {sketch.menu}
     {layers.menu([{name:'Workplane grid',checked:showGrid,change:setShowGrid},{name:'Dimensions',checked:showDimensions,change:setShowDimensions},

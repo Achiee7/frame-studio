@@ -16,7 +16,7 @@ export class SpatialSystem {
   add(i:number,j:number,value:number){
     if(value!==0)this.stiffness[i].set(j,(this.stiffness[i].get(j)??0)+value);
   }
-  solve(){
+  solve(instability:(kind:'translation'|'rotation',physical:number[])=>Error){
     const active=new Set<number>();
     const scale=this.stiffness.map((row,i)=>{
       if(!this.fixed.has(i))active.add(i);
@@ -71,7 +71,7 @@ export class SpatialSystem {
       backSubstitute(mode,true);
       const max=Math.max(1,...mode.map(Math.abs));
       if([...this.translations].some(i=>Math.abs(mode[i])>1e-7*max)){
-        throw Error('Unstable 3D frame. A translation is unrestrained. Check supports, disconnected members, releases and bracing in all three directions.');
+        throw instability('translation',mode.map((value,i)=>value/scale[i]));
       }
       // A simply supported beam can spin freely about its own axis. Its
       // bending reactions are unique if the applied loads do no work on that mode.
@@ -81,7 +81,7 @@ export class SpatialSystem {
         const contribution=applied[i]*mode[i];
         work+=contribution;absoluteWork+=Math.abs(contribution);
       }
-      if(Math.abs(work)>1e-8*absoluteWork)throw Error('Unstable 3D frame. An applied moment acts about an unrestrained rotation.');
+      if(Math.abs(work)>1e-8*absoluteWork)throw instability('rotation',mode.map((value,i)=>value/scale[i]));
       mode.forEach((v,i)=>{if(Math.abs(v)>1e-7*max)indeterminate.add(i);});
     }
     backSubstitute(values,false);

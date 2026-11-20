@@ -1,5 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
-import {Check,ChevronRight,Link2,X} from 'lucide-react';
+import {AlertTriangle,Check,ChevronRight,Link2,X} from 'lucide-react';
+import {useSpatialAnalysis} from './spatial-analysis-hook';
+import {InstabilityEvidence,InstabilityPicks} from './spatial-instability-view';
+import type {SpatialInstability} from './spatial-instability';
 import type {Joint} from './model';
 import type {SpatialModel} from './spatial-model';
 import {connectSpatialCandidate} from './spatial-connections';
@@ -12,6 +15,7 @@ type ReviewProps={
   model:SpatialModel;
   audit:ReturnType<typeof auditSpatialConnections>;
   focusId?:string;
+  diagnostic?:SpatialInstability;
   onChange:(model:SpatialModel)=>void;
   onClose:()=>void;
   onInspect:(pick:{type:'member'|'node';id:string})=>void;
@@ -50,9 +54,11 @@ function Candidate({issue,onConnect,focused}:{
   </article>;
 }
 
-export default function SpatialConnectionReview({model,audit,focusId,onChange,onClose,onInspect}:ReviewProps){
+export default function SpatialConnectionReview({model,audit,focusId,diagnostic,onChange,onClose,onInspect}:ReviewProps){
   const dialog=useRef<HTMLDialogElement>(null);
   const [notice,setNotice]=useState(''),[error,setError]=useState('');
+  const check=useSpatialAnalysis(model,!diagnostic&&model.members.length>0);
+  const instability=diagnostic??check.instability;
   const nodes=new Map(model.nodes.map(n=>[n.id,n]));
   useEffect(()=>{
     const el=dialog.current!;
@@ -72,11 +78,18 @@ export default function SpatialConnectionReview({model,audit,focusId,onChange,on
     <header className="modal-head"><h2 id="sc-review-heading">3D connections</h2>
       <button type="button" aria-label="Close connections" onClick={onClose}><X size={19}/></button></header>
     <div className="sc-content">
+      {instability&&<section className="sc-mechanism" aria-label="Structural instability">
+        <h3><AlertTriangle size={16}/>Unrestrained motion</h3>
+        <InstabilityEvidence diagnostic={instability}/>
+        <InstabilityPicks diagnostic={instability} onInspect={onInspect}/>
+      </section>}
+      {check.pending&&<p role="status">Checking structural stability…</p>}
+      {check.error&&!instability&&<p className="sc-error">{check.error}</p>}
       {notice&&<p className="sc-confirmation" role="status"><Check size={15}/>{notice}</p>}
       {error&&<p className="sc-error" role="alert">{error}</p>}
       {audit.candidates.length>0?<section><h3>Possible connections <small>{audit.candidates.length}</small></h3>
         {audit.candidates.map(issue=><Candidate key={issue.id} issue={issue} onConnect={connect} focused={issue.id===focusId}/>)}
-      </section>:<p className="sc-no-candidates"><Check size={15}/>No connection candidates found.</p>}
+      </section>:<p className="sc-no-candidates">{!instability&&<Check size={15}/>}No unjoined crossings or nearby joints found.</p>}
       {audit.isolated.length>0&&<section><h3>Isolated joints <small>{audit.isolated.length}</small></h3>
         <p>Choose a joint to inspect its position or draw a member to it.</p>
         <div className="sc-joint-picks">{audit.isolated.map(id=><button key={id} onClick={()=>onInspect({type:'node',id})}>{id}<ChevronRight size={14}/></button>)}</div>

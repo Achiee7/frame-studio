@@ -5,6 +5,8 @@ import {SpatialCanvas} from './spatial-canvas';
 import type {SpatialSelection} from './spatial-canvas';
 import {useSpatialAnalysis} from './spatial-analysis-hook';
 import type {SpatialResult,SpatialSample} from './spatial-analysis';
+import type {SpatialInstability} from './spatial-instability';
+import {InstabilityEvidence,InstabilityOverlay,InstabilityPicks} from './spatial-instability-view';
 import type {SpatialModel,Vec3} from './spatial-model';
 import {SpatialAnalysisInspector} from './spatial-results-inspector';
 import type {SpatialLoadRequest} from './spatial-results-inspector';
@@ -143,8 +145,9 @@ function StationInspector({member,station,setStation,units}:{member:MemberResult
   </section>;
 }
 
-type ResultsProps={model:SpatialModel;onBack:()=>void;onReviewConnections:()=>void;onChange?:(model:SpatialModel)=>void};
-export default function SpatialResults({model,onBack,onReviewConnections,onChange}:ResultsProps){
+type ResultsProps={model:SpatialModel;onBack:()=>void;onReviewConnections:(diagnostic?:SpatialInstability)=>void;
+  onInspectInstability:(pick:NonNullable<SpatialSelection>)=>void;onChange?:(model:SpatialModel)=>void};
+export default function SpatialResults({model,onBack,onReviewConnections,onInspectInstability,onChange}:ResultsProps){
   const units=useUnits(),[mode,setMode]=useState<Mode>('reactions'),[direction,setDirection]=useState<'y'|'z'>('y');
   const [selection,setSelection]=useState<SpatialSelection>(null),[panel,setPanel]=useState(true);
   const [station,setStation]=useState(0),[localAxes,setLocalAxes]=useState(true);
@@ -158,7 +161,8 @@ export default function SpatialResults({model,onBack,onReviewConnections,onChang
   const [grid,setGrid]=useState(true),[names,setNames]=useState(true),[loads,setLoads]=useState(true),[values,setValues]=useState(true);
   const preparation=!model.members.length?'Draw at least one beam or strut in 3D-model to analyse a frame.'
     :!model.loads?.some(l=>magnitude(l.vector)>0)?'Select a joint or member in 3D-model and choose Add load.':'';
-  const {result,error,pending}=useSpatialAnalysis(model,!preparation);
+  const {result,error,instability,pending}=useSpatialAnalysis(model,!preparation);
+  const [showMotion,setShowMotion]=useState(true);
   const field:Field=mode==='displacement'?'u':mode==='shear'?(direction==='y'?'Vy':'Vz'):mode==='bending'?(direction==='y'?'My':'Mz'):mode==='torsion'?'T':'N';
   const statistics=useMemo(()=>result?extrema(result,field):undefined,[result,field]);
   const peak=statistics?.peak;
@@ -247,10 +251,11 @@ export default function SpatialResults({model,onBack,onReviewConnections,onChang
             {selectedMember&&selectedSample&&<SpatialStationAxes project={project} member={selectedMember} showAxes={localAxes}
               position={mode==='displacement'?addScaled(selectedSample.position,selectedSample.displacement,factor):selectedSample.position}/>}
             {!sections.bulk&&<SpatialRuleLayer model={model} project={project} dimensions={dimensions} constraints={constraints}
-              onOpen={sketch.inspect} onMove={sketch.moveLabel}/>}</>}/>
-        {(preparation||error)&&<aside className={'sr-alert '+(preparation?'sr-empty':'')} role={preparation?'status':'alert'}>
+              onOpen={sketch.inspect} onMove={sketch.moveLabel}/>}
+            {instability&&showMotion&&<InstabilityOverlay diagnostic={instability} model={model} project={project} selected={selection}/>}</>}/>
+        {!instability&&(preparation||error)&&<aside className={'sr-alert '+(preparation?'sr-empty':'')} role={preparation?'status':'alert'}>
           <AlertTriangle size={19}/><div><strong>{preparation?'Prepare the 3D model':'3D analysis needs attention'}</strong><p>{preparation||error}</p>
-            <div className="sr-alert-actions">{error&&/unstable|equilibrium|attached member|end joints/i.test(error)&&<button onClick={onReviewConnections}><Link2 size={14}/>Review connections</button>}
+            <div className="sr-alert-actions">{error&&/unstable|equilibrium|attached member|end joints/i.test(error)&&<button onClick={()=>onReviewConnections()}><Link2 size={14}/>Review connections</button>}
               <button onClick={onBack}><ArrowLeft size={14}/>Back to 3D-model</button></div></div></aside>}
         {pending&&<div className="sr-legend" role="status">Calculating 3D results…</div>}
         {result&&<div className="sr-legend" aria-label="3D result legend">
@@ -260,6 +265,17 @@ export default function SpatialResults({model,onBack,onReviewConnections,onChang
         </div>}
       </div>
     </div>
+        {instability&&<aside className="sr-alert sr-instability" aria-label="3D stability diagnosis">
+          <AlertTriangle size={19}/><div>
+            <div role="alert"><InstabilityEvidence diagnostic={instability}/></div>
+            <div className="sr-mode-controls"><label className="sr-mode-toggle"><input type="checkbox" checked={showMotion} onChange={e=>setShowMotion(e.target.checked)}/>
+              Show possible motion <small>(illustrative scale)</small></label>
+            <div className="sr-alert-actions">
+              <button onClick={()=>onInspectInstability({type:'node',id:instability.primaryNode})}><CircleDot size={14}/>Inspect {instability.primaryNode}</button>
+              <button onClick={()=>onReviewConnections(instability)}><Link2 size={14}/>Review connections</button>
+            </div>
+            <InstabilityPicks diagnostic={instability} onInspect={onInspectInstability}/></div>
+          </div></aside>}
     {result&&result.warnings.length>0&&<div className="sr-warnings" role="status">{result.warnings.join(' ')}</div>}
     {layers.menu([{name:'Grid',checked:grid,change:setGrid},{name:'Dimensions',checked:dimensions,change:setDimensions},{name:'Constraints',checked:constraints,change:setConstraints},{name:'Joint and member names',checked:names,change:setNames},
       {name:'Applied loads',checked:loads,change:setLoads},{name:'Result values',checked:values,change:setValues},{name:'Selected member axes',checked:localAxes,change:setLocalAxes}])}

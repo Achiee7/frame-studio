@@ -1,8 +1,9 @@
 import {useEffect,useState} from 'react';
 import type {SpatialResult} from './spatial-analysis';
+import type {SpatialInstability} from './spatial-instability';
 import type {SpatialModel} from './spatial-model';
 
-type Reply={result?:SpatialResult;error?:string};
+type Reply={result?:SpatialResult;error?:string;instability?:SpatialInstability};
 export function useSpatialAnalysis(model:SpatialModel,enabled:boolean):Reply & {pending:boolean}{
   const [reply,setReply]=useState<(Reply & {model:SpatialModel})|null>(null);
   useEffect(()=>{
@@ -17,5 +18,5 @@ export function useSpatialAnalysis(model:SpatialModel,enabled:boolean):Reply & {
     return ()=>{active=false;worker?.terminate();};
   },[enabled,model]);
   if(!enabled)return {pending:false};
-  return reply?.model===model?{result:reply.result,error:reply.error,pending:false}:{pending:true};
+  return reply?.model===model?{result:reply.result,error:reply.error,instability:reply.instability,pending:false}:{pending:true};
 }
