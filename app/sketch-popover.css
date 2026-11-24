@@ -25,17 +25,17 @@
 /* Floating tools share one optical treatment and transparency preference. */
 .modal-backdrop > .modal,
 .studio :is(.main-menu, .constraint-popover, .sketch-cursor-popover, .visibility-bar, .section-hover, .inline-editor, .profile-size-editor, .section-target-bar, .modal, .fs-glass-panel),
-.studio .cad-workspace .right-panel.floating-panel:not(.is-docked),
+.studio .cad-workspace .right-panel.floating-panel,
 .studio .sp-explorer .sp-properties,
 .studio .auto-hide .cad-ribbon-body {
   background: var(--glass-background);
-  backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
   box-shadow: var(--glass-shadow);
 }
-.studio .right-panel.floating-panel:not(.is-docked) > .panel-title {
+.studio .right-panel.floating-panel > .panel-title {
   background: color-mix(in srgb, var(--surface) 87%, transparent);
 }
 @media (prefers-reduced-transparency: reduce) {
-  .studio .right-panel.floating-panel:not(.is-docked) > .panel-title { background: var(--surface); }
+  .studio .right-panel.floating-panel > .panel-title { background: var(--surface); }
 }

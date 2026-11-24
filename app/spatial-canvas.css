@@ -41,6 +41,6 @@
 .sp-visibility-menu, dialog.sc-review, .sr-legend {
   background: var(--glass-background, var(--surface));
   box-shadow: var(--glass-shadow, 0 6px 20px #101d2a22);
-  backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
 }
