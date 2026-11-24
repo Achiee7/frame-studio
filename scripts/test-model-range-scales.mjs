@@ -11,6 +11,9 @@ function beam(material,force){const section={id:'range-rect',name:'Rectangle 100
 const soft={...defaultMaterial,id:'soft',name:'Soft test material',E:2e6,fy:32,fu:undefined,strainLimit:undefined};
 const extreme=beam(soft,10000),raw=solve(extreme);assert.ok(Math.abs(raw.maxDisplacement-3125000)<1);assert.equal(raw.applicability.ok,false);
 const stopped=solveMaterial(extreme);assert.equal(stopped.status,'out-of-range');assert.ok(stopped.loadFactor>0&&stopped.loadFactor<1);assert.equal(stopped.reachedTarget,false);assert.equal(stopped.unloaded,undefined);assert.equal(stopped.maxResidual,undefined);assert.equal(stopped.loaded.applicability.ok,true);assert.equal(stopped.rangeStop.assessment.ok,false);assert.ok(stopped.history.every(p=>p.displacement<250));
+assert.ok(stopped.loaded.applicability.memberUtilisation.beam > .99 && stopped.loaded.applicability.memberUtilisation.beam <= 1.00000001);
+assert.ok(stopped.rangeStop.assessment.memberUtilisation.beam > 1);
+assert.ok(raw.applicability.memberUtilisation.beam > stopped.loaded.applicability.memberUtilisation.beam);
 const regular=beam(defaultMaterial,1),valid=solve(regular);assert.equal(valid.applicability.ok,true);assert.equal(solveMaterial(regular).status,'elastic');
 // An axial post-yield benchmark outside 2% strain must stop, rather than claim permanent set.
 const axial=beam({...defaultMaterial,fu:undefined},defaultMaterial.fy*1000*props.A*1.2);axial.nodes[0].support='fixed';axial.nodes[1].support='roller';axial.nodes[1].x=1;axial.beams[0].kind='strut';Object.assign(axial.loads[0],{t:1,fx:-axial.loads[0].fy,fy:0});assert.equal(solveMaterial(axial).status,'out-of-range');

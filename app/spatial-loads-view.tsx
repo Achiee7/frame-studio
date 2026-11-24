@@ -8,7 +8,7 @@ export type Project3D=(point:Vec3)=>ScreenPoint;
 const axes=['x','y','z'] as const;
 const origin={x:0,y:0,z:0};
 const unitAxes={x:{x:1,y:0,z:0},y:{x:0,y:1,z:0},z:{x:0,y:0,z:1}};
-const arrowBlue='var(--info)',loadOrange='var(--force)';
+const arrowBlue='var(--info)',appliedLoadRed='var(--applied-load)';
 export const magnitude=(v:Vec3)=>Math.hypot(v.x,v.y,v.z);
 export const addScaled=(a:Vec3,b:Vec3,k:number)=>({x:a.x+b.x*k,y:a.y+b.y*k,z:a.z+b.z*k});
 function cross(a:Vec3,b:Vec3){return {x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x};}
@@ -95,14 +95,14 @@ export function SpatialLoadOverlay({model,project,labels=true}:{model:SpatialMod
     if(!a||!b||magnitude(load.vector)===0)return null;
     const q=quantity(units,load.kind==='distributed'?'distributed':load.kind==='moment'?'moment':'force');
     const text=labels?load.id+' · '+settingNumber(magnitude(load.vector)/q.factor,units,false)+' '+q.unit:undefined;
-    const props={project,position:member?lerp(a,b,load.t):a,vector:load.vector,color:loadOrange,text};
+    const props={project,position:member?lerp(a,b,load.t):a,vector:load.vector,color:appliedLoadRed,text};
     if(load.kind==='moment')return <MomentArrow key={load.id} {...props}/>;
     if(load.kind==='distributed'){
       const distribution={...props,pixels:30};
       const stations=[0,.167,.333,.5,.667,.833,1];
       const first=arrowEnds({...distribution,position:a}).tail,last=arrowEnds({...distribution,position:b}).tail;
       return <g key={load.id}><title>{load.id} · uniform load on {load.targetId}</title>
-        <line x1={first.x} y1={first.y} x2={last.x} y2={last.y} stroke={loadOrange} opacity=".8"/>
+        <line x1={first.x} y1={first.y} x2={last.x} y2={last.y} stroke={appliedLoadRed} opacity=".8"/>
         {stations.map(t=><ForceArrow key={t} {...distribution} position={lerp(a,b,t)} text={t===.5?text:undefined}/>)}
       </g>;
     }

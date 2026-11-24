@@ -56,9 +56,29 @@
 }
 
 :root {
-  --glass-background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 92%, transparent), color-mix(in srgb, var(--panel) 83%, transparent));
-  --glass-shadow: inset 0 1px rgb(255 255 255 / 25%), 0 10px 32px var(--shadow);
+  --glass-background: var(--surface);
+  --glass-shadow: 0 4px 18px var(--shadow);
+  --glass-filter: none;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media not (prefers-reduced-transparency: reduce) {
+    :root {
+      --glass-background: linear-gradient(125deg,
+        color-mix(in srgb, var(--accent) 9%, transparent),
+        transparent 30%, transparent 66%,
+        color-mix(in srgb, var(--accent) 12%, transparent)),
+        linear-gradient(150deg,
+        color-mix(in srgb, var(--surface) 79%, transparent),
+        color-mix(in srgb, var(--surface) 63%, transparent));
+      --glass-filter: blur(8px) saturate(150%);
+      --glass-shadow: inset 0 1px rgb(255 255 255 / 43%),
+        inset 0 -1px color-mix(in srgb, var(--accent) 20%, transparent),
+        0 8px 24px var(--shadow);
+    }
+  }
 }
 .appearance-settings { display:grid; gap:8px; margin:5px 0 0; padding:10px 8px 6px; border:0; border-top:1px solid var(--line); }
 .appearance-settings label { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .appearance-settings select { min-width:100px; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:5px; padding:5px; }
+
+:root { --applied-load: light-dark(#ba3038, #ff858d); }
