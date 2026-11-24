@@ -259,7 +259,7 @@ export default function SpatialResults({model,onBack,onReviewConnections,onInspe
               <button onClick={onBack}><ArrowLeft size={14}/>Back to 3D-model</button></div></div></aside>}
         {pending&&<div className="sr-legend" role="status">Calculating 3D results…</div>}
         {result&&<div className="sr-legend" aria-label="3D result legend">
-          {mode==='reactions'?<><span><i style={{background:'var(--info)'}}/>Support reactions</span>{loads&&<span><i style={{background:'var(--force)'}}/>Applied loads</span>}</>:
+          {mode==='reactions'?<><span><i style={{background:'var(--info)'}}/>Support reactions</span>{loads&&<span><i style={{background:'var(--applied-load)'}}/>Applied loads</span>}</>:
             mode==='displacement'?<><span><i className="sr-gradient"/>Displacement</span><small>Shape × {settingNumber(factor,units,false)}</small></>:
               <><span><i style={{background:legendColor(true)}}/>−</span><span><i style={{background:legendColor(false)}}/>+</span><b>{symbols[field]} · {quantity(units,kind(field)).unit}</b></>}
         </div>}
