@@ -8,8 +8,8 @@ import {ForceArrow,MomentArrow,magnitude} from './spatial-loads-view';
 import type {Project3D} from './spatial-loads-view';
 
 type Pick=NonNullable<SpatialSelection>;
-const motionColour='#a63662';
-const axisColour='#006b75';
+const motionColour='light-dark(#a63662, #ff9dc5)';
+const axisColour='light-dark(#006b75, #61d7df)';
 
 export function InstabilityEvidence({diagnostic}:{diagnostic:SpatialInstability}){
   const units=useUnits(),moment=quantity(units,'moment');

@@ -65,7 +65,7 @@ function Annotation({rule,shape,text,lane,onOpen,onMove}:{rule:SpatialRule;shape
   const displacement=shift(base,offset),label=shift(shape.anchor,displacement);
   const from=shift(shape.a,displacement),to=shift(shape.b,displacement);
   const width=Math.max(23,Math.min(215,text.length*6.3+12));
-  const color=rule.suppressed?'#8d9792':dimension?'#4c63a0':'#76588b';
+  const color=rule.suppressed?'light-dark(#8d9792, #9daab6)':dimension?'light-dark(#4c63a0, #b2c6ff)':'light-dark(#76588b, #dbb3ed)';
   function end(e:ReactPointerEvent<SVGGElement>){
     e.stopPropagation();const d=drag.current;drag.current=null;setPreview(null);
     if(!d)return;
@@ -93,7 +93,7 @@ function Annotation({rule,shape,text,lane,onOpen,onMove}:{rule:SpatialRule;shape
       onClick={e=>e.stopPropagation()} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){
         e.preventDefault();e.stopPropagation();const box=e.currentTarget.getBoundingClientRect();onOpen(rule,{x:box.right,y:box.top});}}}>
       <title>{actionLabel(rule.kind,'3D',rule.refs.length===1)} · click to edit, drag to reposition</title>
-      <rect x={label.x-width/2} y={label.y-9} width={width} height="18" rx="4" fill={dimension?'#fafbff':'#faf6fd'} stroke={color} strokeOpacity=".45" strokeDasharray={rule.suppressed?'3 2':undefined}/>
+      <rect x={label.x-width/2} y={label.y-9} width={width} height="18" rx="4" fill={dimension?'light-dark(#fafbff, #242c3c)':'light-dark(#faf6fd, #312739)'} stroke={color} strokeOpacity=".45" strokeDasharray={rule.suppressed?'3 2':undefined}/>
       <text x={label.x} y={label.y+3} textAnchor="middle" style={{stroke:'none',fill:color,textDecoration:rule.suppressed?'line-through':undefined}}>{text}</text>
     </g>
   </g>;

@@ -1,13 +1,13 @@
-.sketch-cursor-popover{position:fixed;z-index:35;width:max-content;min-width:176px;max-width:min(245px,calc(100vw - 12px));max-height:calc(100dvh - 12px);overflow:auto;padding:10px;color:#253d33;background:#fff;border:1px solid #cddbd2;border-radius:9px;box-shadow:0 5px 20px #243b322a;font-size:12px;text-align:left}
+.sketch-cursor-popover{position:fixed;z-index:35;width:max-content;min-width:176px;max-width:min(245px,calc(100vw - 12px));max-height:calc(100dvh - 12px);overflow:auto;padding:10px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 5px 20px var(--shadow);font-size:12px;text-align:left}
 .sketch-popover-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.sketch-popover-head strong{font-size:12px;color:#294c3a}
-.sketch-popover-head button{border:0;padding:2px;color:#708578}
-.sketch-cursor-popover .sketch-pick-caption,.sketch-cursor-popover>small{font-size:10px;line-height:1.45;color:#657b6d;margin:3px 0 5px;overflow-wrap:anywhere}
+.sketch-popover-head strong{font-size:12px;color:var(--accent)}
+.sketch-popover-head button{border:0;padding:2px;color:var(--muted)}
+.sketch-cursor-popover .sketch-pick-caption,.sketch-cursor-popover>small{font-size:10px;line-height:1.45;color:var(--muted);margin:3px 0 5px;overflow-wrap:anywhere}
 .sketch-cursor-popover>small{display:block;margin:7px 0 0}
 .sketch-action-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:7px}
 .sketch-action-buttons button{font-size:11px;min-height:28px;padding:4px 8px;white-space:normal}
 .sketch-action-buttons button:only-child{grid-column:span 2}
-.sketch-cursor-popover .sketch-pick-error{margin:6px 0 0;font-size:11px;color:#a23a28}
+.sketch-cursor-popover .sketch-pick-error{margin:6px 0 0;font-size:11px;color:var(--danger)}
 .sketch-value-form{display:grid;gap:8px;margin-top:7px}
 .sketch-value-form label{margin:0}
 .sketch-value-form label>span{display:block;margin-bottom:4px}
@@ -16,9 +16,31 @@
 .sketch-value-form input[type=text]{margin:0}
 .sketch-edit-actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .sketch-edit-actions button,.sketch-value-form button{font-size:11px;padding:5px 8px}
-.sketch-value-form button[type=submit]{background:#28664f;color:white;border-color:#28664f}
-.sketch-edit-actions .remove{color:#994a3b}
+.sketch-value-form button[type=submit]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.sketch-edit-actions .remove{color:var(--danger)}
 .spatial-rule-label{cursor:pointer;outline:none;touch-action:none}
 .spatial-rule-label:focus-visible rect{stroke-width:2}
 .sp-toolbar{flex-wrap:wrap}
 @media(max-width:640px){.studio .sub-left{gap:3px}.studio .subbar{padding-inline:7px}.studio .subbar .tab{font-size:11px;padding-inline:5px;min-width:0}.studio .sub-actions{gap:1px}}
+/* A solid panel remains the fallback when transparency is unavailable. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .modal-backdrop > .modal,
+  .studio :is(.main-menu, .constraint-popover, .sketch-cursor-popover, .visibility-bar, .section-hover, .inline-editor, .profile-size-editor, .section-target-bar, .modal),
+  .studio .cad-workspace:not(.docked) .right-panel.floating-panel,
+  .studio .auto-hide .cad-ribbon-body {
+    background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 92%, transparent), color-mix(in srgb, var(--panel) 83%, transparent));
+    -webkit-backdrop-filter: blur(19px) saturate(145%);
+    backdrop-filter: blur(19px) saturate(145%);
+    box-shadow: inset 0 1px rgb(255 255 255 / 25%), 0 10px 32px var(--shadow);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .modal-backdrop > .modal,
+  .studio :is(.main-menu, .constraint-popover, .sketch-cursor-popover, .visibility-bar, .section-hover, .inline-editor, .profile-size-editor, .section-target-bar, .modal),
+  .studio .cad-workspace:not(.docked) .right-panel.floating-panel,
+  .studio .auto-hide .cad-ribbon-body {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

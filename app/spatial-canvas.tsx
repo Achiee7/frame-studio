@@ -38,9 +38,9 @@ type Hit = {type:'node'|'member'|'intersection'|'plane';id:string;point:Vec3;dis
 type Gesture = {id:number;origin:ScreenPoint;last:ScreenPoint;mode:'pan'|'orbit'|'pick';moved:boolean;shortcut:boolean;
   geometry?:{pick:NonNullable<SpatialSelection>;update:SpatialDrag;plane:SpatialPlane;step:number;camera:SpatialCamera;size:CanvasSize};
 };
-const stateColors={free:'#326dcc',fixed:'#20262c',conflict:'#cc3f4c'};
+const stateColors={free:'var(--info)',fixed:'var(--ink)',conflict:'var(--danger)'};
 const stateLabels={free:'Underconstrained',fixed:'Fully constrained',conflict:'Constraint conflict'};
-const axisColor={x:'#b56d53',y:'#58865a',z:'#5987b0'};
+const axisColor={x:'light-dark(#b56d53, #ffa38b)',y:'light-dark(#58865a, #95d39a)',z:'light-dark(#5987b0, #8dcaff)'};
 const axes=['x','y','z'] as const;
 const centerOf=(s:CanvasSize)=>({x:s.width/2,y:s.height/2});
 const lengthOf=(a:Vec3,b:Vec3)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
@@ -58,7 +58,7 @@ const PlaneGrid=memo(function PlaneGrid({camera,size,plane,offset,grid}:{camera:
       const q={...p,[other]:other===u?highU:highV};
       const a=project3D(p,camera,size),b=project3D(q,camera,size);
       lines.push(<line key={axis+i} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-        stroke={j===0?axisColor[other]:j%5===0?'#c8d8ce':'#dee8e1'} opacity={j===0?.67:j%5===0?.85:.8}/>);
+        stroke={j===0?axisColor[other]:j%5===0?'var(--line)':'color-mix(in srgb, var(--line) 50%, var(--canvas-bg))'} opacity={j===0?.67:j%5===0?.85:.8}/>);
     }
   }
   return <g aria-hidden="true" data-grid-step={step} pointerEvents="none">{lines}</g>;
@@ -74,7 +74,7 @@ function ViewAxes({camera}:{camera:SpatialCamera}){
       if(Math.hypot(q.x-o.x,q.y-o.y)<2)return null;
       return <g key={axis} stroke={axisColor[axis]}><line x1={o.x} y1={o.y} x2={q.x} y2={q.y} strokeWidth="1.7"/>
         <text x={q.x+(q.x-o.x)*.34} y={q.y+(q.y-o.y)*.34+3} textAnchor="middle" fill={axisColor[axis]} stroke="none">{axis.toUpperCase()}</text></g>;
-    })}<circle cx={o.x} cy={o.y} r="2.5" fill="#607565"/>
+    })}<circle cx={o.x} cy={o.y} r="2.5" fill="var(--muted)"/>
   </svg>;
 }
 
@@ -277,15 +277,15 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
         const active=selection?.type==='member'&&selection.id===member.id||highlights.some(p=>p.type==='member'&&p.id===member.id);
         const highlighted=hover.some(h=>h.type==='member'&&h.id===member.id);
         const state=rejected.some(p=>p.type==='member'&&p.id===member.id)?'conflict':mobility?.members.get(member.id);
-        const color=state?stateColors[state]:active?'#b76520':highlighted?'#16745d':member.kind==='strut'?'#526c5e':'#284c41';
+        const color=state?stateColors[state]:active?'light-dark(#b76520, #ffb698)':highlighted?'var(--accent)':member.kind==='strut'?'var(--muted)':'var(--ink)';
         return <g key={member.id} data-member={member.id} aria-label={member.id+' '+member.kind+(state?' · '+stateLabels[state]:'')}>
           {state&&<title>{member.id} · {stateLabels[state]}</title>}
-          {(active||highlighted)&&<line {...line} stroke={active?'#b76520':'#16745d'} opacity=".32" strokeWidth="8" strokeLinecap="round"/>}
+          {(active||highlighted)&&<line {...line} stroke={active?'light-dark(#b76520, #ffb698)':'var(--accent)'} opacity=".32" strokeWidth="8" strokeLinecap="round"/>}
           <line {...line} stroke={color} strokeWidth={2.7} strokeLinecap="round" strokeDasharray={member.kind==='strut'?'8 4':undefined}/>
           {showNames&&<text className="sp-member-label" x={(a.screen.x+b.screen.x)/2} y={(a.screen.y+b.screen.y)/2-7} textAnchor="middle">{member.id}</text>}
         </g>;
       })}
-      {startScreen&&drawing&&<g stroke="#bd732a" fill="none">
+      {startScreen&&drawing&&<g stroke="light-dark(#bd732a, #ffb698)" fill="none">
         {preview&&<line {...preview} strokeWidth="2" strokeDasharray="6 4"/>}
         <circle cx={startScreen.x} cy={startScreen.y} r="6" strokeWidth="2"/>
       </g>}
@@ -293,15 +293,15 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
         const active=selection?.type==='node'&&selection.id===node.id||highlights.some(p=>p.type==='node'&&p.id===node.id);
         const hot=hover.some(h=>h.type==='node'&&h.id===node.id);
         const state=rejected.some(p=>p.type==='node'&&p.id===node.id)?'conflict':mobility?.nodes.get(node.id);
-        const ink=state?stateColors[state]:'#295948';
+        const ink=state?stateColors[state]:'var(--ink)';
         return <g key={node.id} transform={`translate(${screen.x} ${screen.y})`} data-node={node.id} aria-label={node.id+' '+node.joint+' joint'+(state?' · '+stateLabels[state]:'')}>
           {state&&<title>{node.id} · {stateLabels[state]}{node.positionLocked?' · Position locked':''}</title>}
-          {mobility&&node.positionLocked&&<g transform="translate(6 5)" stroke="#20262c" fill="#f7faf7" pointerEvents="none">
+          {mobility&&node.positionLocked&&<g transform="translate(6 5)" stroke="var(--ink)" fill="var(--canvas-bg)" pointerEvents="none">
             <path d="M2 4V2a2 2 0 0 1 4 0v2" fill="none"/><rect x="1" y="4" width="6" height="5" rx="1"/>
           </g>}
-          {node.support!=='free'&&<g transform="scale(.72)" color="#647b6e"><SupportGlyph type={node.support}/></g>}
-          {(active||hot)&&<circle r="9" fill={active?'#f3d5b3':'#bce3cf'} stroke={active?'#b76520':'#3b8469'} strokeWidth="1"/>}
-          <circle r={node.joint==='rigid'?3.5:5} fill={node.joint==='rigid'?ink:'#fff'} stroke={ink} strokeWidth="1.7"/>
+          {node.support!=='free'&&<g transform="scale(.72)" color="var(--muted)"><SupportGlyph type={node.support}/></g>}
+          {(active||hot)&&<circle r="9" fill={active?'var(--active)':'var(--active)'} stroke={active?'light-dark(#b76520, #ffb698)':'var(--accent)'} strokeWidth="1"/>}
+          <circle r={node.joint==='rigid'?3.5:5} fill={node.joint==='rigid'?ink:'var(--surface)'} stroke={ink} strokeWidth="1.7"/>
           {node.joint==='pin'&&<circle r="1.6" fill={ink}/>}
           {showNames&&<text className="sp-node-label" x="8" y="-7">{node.id}</text>}
         </g>;
@@ -310,18 +310,18 @@ export function SpatialCanvas({nodes,members,tool,plane,offset,snap,start,select
         const p=project3D({x:0,y:0,z:0},camera,size);
         return <g data-origin="true" aria-label="3D sketch origin" transform={`translate(${p.x} ${p.y})`}
           onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();onSketchPick({type:'node',id:'@origin'},{x:e.clientX,y:e.clientY},e.ctrlKey||e.metaKey);}}>
-          <path d="M-6 0h12 M0 -6v12" fill="none" stroke="#977bb0" pointerEvents="none"/>
-          <rect x="-47" y="6" width="41" height="17" rx="4" fill="#faf7ff" stroke={highlights.some(p=>p.id==='@origin')?'#7952aa':'#d8cde4'} cursor="pointer"/>
-          <text x="-26" y="18" textAnchor="middle" style={{fill:'#785d90'}}>Origin</text>
+          <path d="M-6 0h12 M0 -6v12" fill="none" stroke="light-dark(#977bb0, #d4aaf3)" pointerEvents="none"/>
+          <rect x="-47" y="6" width="41" height="17" rx="4" fill="light-dark(#faf7ff, #312739)" stroke={highlights.some(p=>p.id==='@origin')?'light-dark(#7952aa, #d4aaf3)':'var(--line)'} cursor="pointer"/>
+          <text x="-26" y="18" textAnchor="middle" style={{fill:'light-dark(#785d90, #d4aaf3)'}}>Origin</text>
         </g>;
       })()}
       {renderOverlay?.(p=>project3D(p,camera,size),size)}
       {supportPicking&&targetScreen&&<g data-support-preview={target?.type} transform={`translate(${targetScreen.x} ${targetScreen.y})`}
-        color="#13764f" pointerEvents="none" aria-hidden="true">
+        color="var(--accent)" pointerEvents="none" aria-hidden="true">
         <g transform="scale(.72)" opacity=".85"><SupportGlyph type={supportPicking}/></g>
-        <circle r="4" fill="white" stroke="currentColor" strokeWidth="2"/>
+        <circle r="4" fill="var(--surface)" stroke="currentColor" strokeWidth="2"/>
       </g>}
-      {targetScreen&&drawing&&target?.type!=='node'&&<g transform={`translate(${targetScreen.x} ${targetScreen.y})`} stroke="#b9722e" fill="#fff">
+      {targetScreen&&drawing&&target?.type!=='node'&&<g transform={`translate(${targetScreen.x} ${targetScreen.y})`} stroke="light-dark(#b9722e, #ffb698)" fill="var(--surface)">
         <circle r="3.5"/><path d="M-10 0h5m10 0h5M0 -10v5m0 10v5" fill="none"/>
       </g>}
     </svg>

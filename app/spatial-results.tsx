@@ -63,7 +63,7 @@ function modelExtent(model:SpatialModel) {
   }
   return max;
 }
-function legendColor(negative:boolean){return negative?'#3f6ea7':'#368464';}
+function legendColor(negative:boolean){return negative?'var(--info)':'var(--ok)';}
 
 function MemberDiagrams({project,result,field,peak,scale,labels,selected}:{
   project:Project3D;result:SpatialResult;field:Component;peak:Peak|undefined;scale:number;labels:boolean;selected:SpatialSelection;
@@ -115,12 +115,12 @@ function DeflectedFrame({project,result,factor,labels,peak}:{
       const pts=member.samples.map(s=>project(addScaled(s.position,s.displacement,factor)));
       return <g key={member.id}>{pts.slice(1).map((p,i)=>{
         const ratio=result.maxDisplacement>0?Math.min(1,(magnitude(member.samples[i].displacement)+magnitude(member.samples[i+1].displacement))/(2*result.maxDisplacement)):0;
-        return <line key={i} x1={pts[i].x} y1={pts[i].y} x2={p.x} y2={p.y} stroke={`hsl(${190+74*ratio} 60% ${46+4*ratio}%)`} strokeWidth="3" strokeLinecap="round"/>;
+        return <line key={i} x1={pts[i].x} y1={pts[i].y} x2={p.x} y2={p.y} stroke={`light-dark(hsl(${190+74*ratio} 60% ${46+4*ratio}%), hsl(${190+74*ratio} 72% ${68+6*ratio}%))`} strokeWidth="3" strokeLinecap="round"/>;
       })}</g>;
     })}
     {labels&&peak&&(()=>{
       const p=project(addScaled(peak.sample.position,peak.sample.displacement,factor));
-      return <g><circle cx={p.x} cy={p.y} r="3" fill="#7451ac"/><text className="sr-svg-value" style={{fill:'#69429d'}} x={p.x+7} y={p.y-6}>{fmt(peak.value,'deflection',units)}</text></g>;
+      return <g><circle cx={p.x} cy={p.y} r="3" fill="light-dark(#7451ac, #caa7ff)"/><text className="sr-svg-value" style={{fill:'light-dark(#69429d, #caa7ff)'}} x={p.x+7} y={p.y-6}>{fmt(peak.value,'deflection',units)}</text></g>;
     })()}
   </g>;
 }
@@ -259,7 +259,7 @@ export default function SpatialResults({model,onBack,onReviewConnections,onInspe
               <button onClick={onBack}><ArrowLeft size={14}/>Back to 3D-model</button></div></div></aside>}
         {pending&&<div className="sr-legend" role="status">Calculating 3D results…</div>}
         {result&&<div className="sr-legend" aria-label="3D result legend">
-          {mode==='reactions'?<><span><i style={{background:'#345fa1'}}/>Support reactions</span>{loads&&<span><i style={{background:'#ba5f22'}}/>Applied loads</span>}</>:
+          {mode==='reactions'?<><span><i style={{background:'var(--info)'}}/>Support reactions</span>{loads&&<span><i style={{background:'var(--force)'}}/>Applied loads</span>}</>:
             mode==='displacement'?<><span><i className="sr-gradient"/>Displacement</span><small>Shape × {settingNumber(factor,units,false)}</small></>:
               <><span><i style={{background:legendColor(true)}}/>−</span><span><i style={{background:legendColor(false)}}/>+</span><b>{symbols[field]} · {quantity(units,kind(field)).unit}</b></>}
         </div>}

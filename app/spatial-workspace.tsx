@@ -351,7 +351,7 @@ export default function SpatialWorkspace({model, onChange, entry}:{model:Spatial
           onSketchPick={sections.bulk||target?undefined:pickGeometry} highlights={sections.bulk?sections.chosen.map(id=>({type:'member',id})):sketch.picks} renderOverlay={project=><>
             {showConnections&&!preview&&audit.candidates.map(c=>{
               const p=project(c.point),interactive=tool==='select'&&!target&&!sections.bulk;
-              return <circle key={c.id} cx={p.x} cy={p.y} r="9" fill="none" stroke="#b67724" strokeWidth="2"
+              return <circle key={c.id} cx={p.x} cy={p.y} r="9" fill="none" stroke="light-dark(#b67724, #ffb890)" strokeWidth="2"
                 strokeDasharray="4 3" pointerEvents={interactive?'stroke':'none'} style={{cursor:interactive?'pointer':undefined}}
                 onPointerDown={e=>{if(interactive)e.stopPropagation();}}
                 onClick={()=>{if(interactive)setReview({focusId:c.id});}}>

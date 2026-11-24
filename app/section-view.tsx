@@ -46,14 +46,14 @@ export function SectionDrawing({section:s,dimensions=true,onResize,onCancel,onEd
  const edge=x+b,bottom=y+h;
  const drawing=<svg className={'section-drawing '+(dimensions?'dimensioned':'thumbnail')} viewBox={dimensions?'0 0 336 220':'65 15 206 200'}
    role={editable?'group':'img'} aria-label={s.name+' cross section'+(dimensions?' with dimensions in '+q.unit:'')}>
-   <defs><pattern id={'hatch'+id} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#9bb7aa" strokeWidth="1"/></pattern></defs>
-   <g fill={'url(#hatch'+id+')'} stroke="#2d5c4d" strokeWidth="1.7">
+   <defs><pattern id={'hatch'+id} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--edge)" strokeWidth="1"/></pattern></defs>
+   <g fill={'url(#hatch'+id+')'} stroke="var(--accent)" strokeWidth="1.7">
      {g.shape==='i'?<path d={`M${x} ${y}h${b}v${tf}H${centerX+tw/2+r}a${r} ${r} 0 0 0 ${-r} ${r}V${bottom-tf-r}a${r} ${r} 0 0 0 ${r} ${r}H${edge}v${tf}H${x}v${-tf}H${centerX-tw/2-r}a${r} ${r} 0 0 0 ${r} ${-r}V${y+tf+r}a${r} ${r} 0 0 0 ${-r} ${-r}H${x}Z`}/>:
-       g.shape==='chs'?<><circle cx={centerX} cy={centerY} r={h/2}/><circle cx={centerX} cy={centerY} r={h/2-t} fill="#f8fbf9"/></>:
-       <><rect x={x} y={y} width={b} height={h} rx={r}/>{g.shape==='rhs'&&<rect x={x+t} y={y+t} width={b-2*t} height={h-2*t} rx={(g.ri??Math.max(0,g.r-g.t))*k} fill="#f8fbf9"/>}</>}
+       g.shape==='chs'?<><circle cx={centerX} cy={centerY} r={h/2}/><circle cx={centerX} cy={centerY} r={h/2-t} fill="var(--surface)"/></>:
+       <><rect x={x} y={y} width={b} height={h} rx={r}/>{g.shape==='rhs'&&<rect x={x+t} y={y+t} width={b-2*t} height={h-2*t} rx={(g.ri??Math.max(0,g.r-g.t))*k} fill="var(--surface)"/>}</>}
    </g>
    {dimensions&&<>
-     <path d={`M${x-10} ${centerY}H${edge+10} M${centerX} ${y-10}V${bottom+10}`} stroke="#b8cac0" strokeDasharray="4 3" fill="none"/>
+     <path d={`M${x-10} ${centerY}H${edge+10} M${centerX} ${y-10}V${bottom+10}`} stroke="var(--line)" strokeDasharray="4 3" fill="none"/>
      <g className="profile-dimension profile-dimension-lines">
        <path d={`M${x} ${bottom+4}V204 M${edge} ${bottom+4}V204 M${x} 197H${edge}`}/>
        {label(g.shape==='chs'?'h':'b',centerX,197,g.shape==='chs'?'Ø':'b',g.b,136)}
@@ -70,7 +70,7 @@ export function SectionDrawing({section:s,dimensions=true,onResize,onCancel,onEd
          </>}
        </>}
      </g>
-     <text x="12" y="18" fill="#647c6d" fontSize="11">{'Dimensions ('+q.unit+')'}</text>
+     <text x="12" y="18" fill="var(--muted)" fontSize="11">{'Dimensions ('+q.unit+')'}</text>
    </>}
  </svg>;
  return editable?<div className="profile-editor">{drawing}{edit&&<form className="profile-size-editor" aria-label="Edit profile dimension" onSubmit={e=>{e.preventDefault();finish();}} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();cancel();}}}><label>{dimensionNames[edit.key]} <span>{edit.unit}</span><input autoFocus aria-label="Profile dimension value" inputMode="decimal" value={edit.text} aria-invalid={!!edit.error} onChange={e=>preview(e.target.value)} onFocus={e=>e.target.select()}/></label><div><button type="submit" className="primary">Apply size</button><button type="button" onClick={cancel}>Cancel size</button></div>{edit.error?<small role="alert">{edit.error}</small>:<small>Live preview · Enter applies · Esc cancels</small>}</form>}</div>:drawing;

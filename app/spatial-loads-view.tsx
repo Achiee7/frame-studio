@@ -8,7 +8,7 @@ export type Project3D=(point:Vec3)=>ScreenPoint;
 const axes=['x','y','z'] as const;
 const origin={x:0,y:0,z:0};
 const unitAxes={x:{x:1,y:0,z:0},y:{x:0,y:1,z:0},z:{x:0,y:0,z:1}};
-const arrowBlue='#345fa1',loadOrange='#ba5f22';
+const arrowBlue='var(--info)',loadOrange='var(--force)';
 export const magnitude=(v:Vec3)=>Math.hypot(v.x,v.y,v.z);
 export const addScaled=(a:Vec3,b:Vec3,k:number)=>({x:a.x+b.x*k,y:a.y+b.y*k,z:a.z+b.z*k});
 function cross(a:Vec3,b:Vec3){return {x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x};}
@@ -48,7 +48,7 @@ export function ForceArrow(props:ArrowProps){
   const edge=reaction?tip:tail,side=direction.x*(reaction?1:-1)<0?-1:1;
   return <g pointerEvents="none">
     {Math.hypot(direction.x,direction.y)<3?
-      <g><circle cx={o.x} cy={o.y} r="4.7" fill="white" stroke={color} strokeWidth="1.5"/>
+      <g><circle cx={o.x} cy={o.y} r="4.7" fill="var(--surface)" stroke={color} strokeWidth="1.5"/>
         {facesViewer(props.project,props.vector)?<circle cx={o.x} cy={o.y} r="1.7" fill={color}/>:
           <path d={`M${o.x-2.6} ${o.y-2.6}l5.2 5.2m0 -5.2l-5.2 5.2`} stroke={color} strokeWidth="1.2"/>}</g>:
       <><path d={`M${tail.x} ${tail.y} L${tip.x} ${tip.y}`} fill="none" stroke={color} strokeWidth="1.8"/>{arrowHead(tip,direction,color)}</>}
@@ -75,7 +75,7 @@ export function SpatialStationAxes({project,position,member,showAxes}:{
   project:Project3D;position:Vec3;member:SpatialResult['members'][number];showAxes:boolean;
 }){
   const o=project(position),scale=25/projectionScale(project);
-  const directions=[{key:'x',axis:member.localX,color:'#a86046'},{key:'y',axis:member.localY,color:'#3a8050'},{key:'z',axis:member.localZ,color:'#4774a6'}];
+  const directions=[{key:'x',axis:member.localX,color:'light-dark(#a86046, #ffa38b)'},{key:'y',axis:member.localY,color:'light-dark(#3a8050, #95d39a)'},{key:'z',axis:member.localZ,color:'light-dark(#4774a6, #8dcaff)'}];
   return <g pointerEvents="none" aria-label={'Inspection station on '+member.id}>
     {showAxes&&directions.map(({key,axis,color})=>{
       const end=project(addScaled(position,axis,scale)),d={x:end.x-o.x,y:end.y-o.y};
@@ -83,7 +83,7 @@ export function SpatialStationAxes({project,position,member,showAxes}:{
       return <g key={key}><path d={`M${o.x} ${o.y}L${end.x} ${end.y}`} fill="none" stroke={color} strokeWidth="1.4"/>
         {arrowHead(end,d,color)}<text className="sr-svg-value" x={end.x+(d.x<0?-3:3)} y={end.y-2} textAnchor={d.x<0?'end':'start'} style={{fill:color}}>{key}</text></g>;
     })}
-    <circle cx={o.x} cy={o.y} r="4" fill="white" stroke="#466451" strokeWidth="2"/>
+    <circle cx={o.x} cy={o.y} r="4" fill="var(--surface)" stroke="var(--muted)" strokeWidth="2"/>
   </g>;
 }
 
